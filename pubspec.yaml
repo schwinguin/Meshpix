@@ -1,0 +1,25 @@
+name: meshpix
+description: MeshCore companion for tiny LoRa image transfer.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  archive: ^4.0.7
+  cupertino_icons: ^1.0.8
+  flutter_blue_plus: ^1.35.5
+  image_picker: ^1.1.2
+  permission_handler: ^12.0.1
+  provider: ^6.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
