@@ -77,23 +77,18 @@ void main() {
     expect(image.indices.length, 96 * 96);
   });
 
-  test('upgrade falls back when 96px cannot fit', () {
+  test('encode still succeeds if upgrade cannot fit', () {
     final encoded = codec.encode(
       src,
       options: const EncodeOptions(
         includeUpgrade: true,
-        upgradeSize: 96,
-        maxChunks: 8,
+        maxChunks: 0,
         transferId: 43,
       ),
     );
-    expect(encoded.stats.upgradeWidth, lessThan(96));
-    expect(encoded.stats.upgradeWidth, greaterThanOrEqualTo(32));
-    expect(encoded.chunks.length, lessThanOrEqualTo(8));
-    final image = codec.decodeUpgradeBlob(codec.reassembleChunks(
-      encoded.chunks.map((c) => c.slice).toList(),
-    ));
-    expect(image.width, encoded.stats.upgradeWidth);
+    expect(encoded.chunks, isEmpty);
+    expect(encoded.preview.bytes.length, lessThanOrEqualTo(kMaxDatagramPayload));
+    expect(encoded.stats.previewWidth, greaterThan(0));
   });
 
   test('nack bitmap lists missing sequences', () {

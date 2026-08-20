@@ -363,6 +363,7 @@ class Mp1Codec {
     if (preview == null || previewImg == null) {
       throw Mp1Exception('could not fit a preview into ${options.maxPayload} bytes');
     }
+    final chosenPreviewImg = previewImg;
 
     var chunks = <ChunkPacket>[];
     var blob = Uint8List(0);
@@ -374,7 +375,7 @@ class Mp1Codec {
         64,
         48,
         32,
-      }.where((s) => s > previewImg.width).toList()
+      }.where((s) => s > chosenPreviewImg.width).toList()
         ..sort((a, b) => b.compareTo(a));
       upgradeSearch:
       for (final size in sizes) {
@@ -398,7 +399,7 @@ class Mp1Codec {
     }
 
     final fitted = _tryPreview(
-      img: previewImg,
+      img: chosenPreviewImg,
       transferId: transferId,
       maxPayload: options.maxPayload,
       upgradeChunks: chunks.length,
@@ -408,7 +409,7 @@ class Mp1Codec {
     }
     preview = fitted;
 
-    final packed = compressBody(previewImg);
+    final packed = compressBody(chosenPreviewImg);
     return EncodedTransfer(
       transferId: transferId,
       preview: preview,
@@ -416,10 +417,10 @@ class Mp1Codec {
       upgradeBlob: blob,
       stats: EncodeStats(
         previewBytes: preview.bytes.length,
-        previewWidth: previewImg.width,
-        previewBpp: previewImg.bitsPerPixel,
+        previewWidth: chosenPreviewImg.width,
+        previewBpp: chosenPreviewImg.bitsPerPixel,
         chunkCount: chunks.length,
-        upgradeWidth: chunks.isEmpty ? previewImg.width : (blob.isEmpty ? 0 : blob[0]),
+        upgradeWidth: chunks.isEmpty ? chosenPreviewImg.width : (blob.isEmpty ? 0 : blob[0]),
         encoding: packed.encoding,
       ),
     );
