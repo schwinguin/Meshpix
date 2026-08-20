@@ -124,11 +124,11 @@ class _ComposerScreenState extends State<ComposerScreen> {
             },
           ),
           SwitchListTile(
-            title: const Text('Nachzug 48px (nur Direct/DM)'),
+            title: const Text('Nachzug bis 96px (nur Direct/DM)'),
             subtitle: Text(
               channel
                   ? 'Public Channel: nur Preview, kein Flood der Chunks'
-                  : 'Empfänger tippt Nachladen',
+                  : 'Empfänger tippt Nachladen. Passt es nicht, fällt auf 80/64/48 zurück.',
             ),
             value: _upgrade && !channel,
             onChanged: channel

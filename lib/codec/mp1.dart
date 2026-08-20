@@ -367,21 +367,32 @@ class Mp1Codec {
     var chunks = <ChunkPacket>[];
     var blob = Uint8List(0);
     if (options.includeUpgrade) {
-      for (final size in [options.upgradeSize, 32, 24]) {
-        if (size <= previewImg.width && size <= 24) continue;
-        try {
-          final up = _quantizeTo(source, size, mesh16, options.dither);
-          blob = _blobFor(up);
-          chunks = _chunkBlob(
-            blob: blob,
-            transferId: transferId,
-            maxPayload: options.maxPayload,
-            maxChunks: options.maxChunks,
-          );
-          break;
-        } catch (_) {
-          chunks = [];
-          blob = Uint8List(0);
+      final sizes = <int>{
+        options.upgradeSize,
+        96,
+        80,
+        64,
+        48,
+        32,
+      }.where((s) => s > previewImg.width).toList()
+        ..sort((a, b) => b.compareTo(a));
+      upgradeSearch:
+      for (final size in sizes) {
+        for (final pal in [mesh16, mesh4]) {
+          try {
+            final up = _quantizeTo(source, size, pal, options.dither);
+            blob = _blobFor(up);
+            chunks = _chunkBlob(
+              blob: blob,
+              transferId: transferId,
+              maxPayload: options.maxPayload,
+              maxChunks: options.maxChunks,
+            );
+            break upgradeSearch;
+          } catch (_) {
+            chunks = [];
+            blob = Uint8List(0);
+          }
         }
       }
     }
@@ -443,6 +454,8 @@ class Mp1Codec {
     );
     out.addByte(missingMask & 0xFF);
     out.addByte((missingMask >> 8) & 0xFF);
+    out.addByte((missingMask >> 16) & 0xFF);
+    out.addByte((missingMask >> 24) & 0xFF);
     return NackPacket(
       transferId: transferId,
       bytes: out.takeBytes(),
@@ -515,7 +528,11 @@ class Mp1Codec {
         return PullPacket(transferId: transferId, bytes: bytes);
       case Mp1Kind.nack:
         if (bytes.length < 8) throw Mp1Exception('truncated nack');
-        final mask = bytes[6] | (bytes[7] << 8);
+        var mask = bytes[6] | (bytes[7] << 8);
+        if (bytes.length >= 10) {
+          mask |= bytes[8] << 16;
+          mask |= bytes[9] << 24;
+        }
         return NackPacket(
           transferId: transferId,
           bytes: bytes,
@@ -562,7 +579,7 @@ class Mp1Codec {
 
 int missingMaskFor(List<Uint8List?> parts) {
   var mask = 0;
-  for (var i = 0; i < parts.length && i < 16; i++) {
+  for (var i = 0; i < parts.length && i < 32; i++) {
     if (parts[i] == null) mask |= 1 << i;
   }
   return mask;
@@ -570,7 +587,7 @@ int missingMaskFor(List<Uint8List?> parts) {
 
 List<int> seqsFromMask(int mask, int total) {
   final seqs = <int>[];
-  for (var i = 0; i < total && i < 16; i++) {
+  for (var i = 0; i < total && i < 32; i++) {
     if ((mask & (1 << i)) != 0) seqs.add(i);
   }
   return seqs;

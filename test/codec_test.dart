@@ -53,7 +53,7 @@ void main() {
     expect(parsed.image.indices, encoded.preview.image.indices);
   });
 
-  test('upgrade chunks reassemble to the same blob', () {
+  test('upgrade defaults to 96x96 within 32 chunks', () {
     final encoded = codec.encode(
       src,
       options: const EncodeOptions(
@@ -62,6 +62,7 @@ void main() {
         transferId: 42,
       ),
     );
+    expect(encoded.stats.upgradeWidth, 96);
     expect(encoded.chunks.length, greaterThan(0));
     expect(encoded.chunks.length, lessThanOrEqualTo(kMaxUpgradeChunks));
     for (final c in encoded.chunks) {
@@ -71,8 +72,28 @@ void main() {
     final blob = codec.reassembleChunks(parts);
     expect(blob, encoded.upgradeBlob);
     final image = codec.decodeUpgradeBlob(blob);
-    expect(image.width, greaterThanOrEqualTo(24));
-    expect(image.indices.length, image.width * image.height);
+    expect(image.width, 96);
+    expect(image.height, 96);
+    expect(image.indices.length, 96 * 96);
+  });
+
+  test('upgrade falls back when 96px cannot fit', () {
+    final encoded = codec.encode(
+      src,
+      options: const EncodeOptions(
+        includeUpgrade: true,
+        upgradeSize: 96,
+        maxChunks: 8,
+        transferId: 43,
+      ),
+    );
+    expect(encoded.stats.upgradeWidth, lessThan(96));
+    expect(encoded.stats.upgradeWidth, greaterThanOrEqualTo(32));
+    expect(encoded.chunks.length, lessThanOrEqualTo(8));
+    final image = codec.decodeUpgradeBlob(codec.reassembleChunks(
+      encoded.chunks.map((c) => c.slice).toList(),
+    ));
+    expect(image.width, encoded.stats.upgradeWidth);
   });
 
   test('nack bitmap lists missing sequences', () {
@@ -83,6 +104,31 @@ void main() {
     final parsed = codec.parse(pkt.bytes) as NackPacket;
     expect(parsed.missingMask, mask);
     expect(parsed.bytes.length, lessThanOrEqualTo(kMaxDatagramPayload));
+  });
+
+  test('nack bitmap covers chunks beyond 16', () {
+    final parts = List<Uint8List?>.filled(24, Uint8List(1));
+    parts[20] = null;
+    final mask = missingMaskFor(parts);
+    expect(seqsFromMask(mask, 24), [20]);
+    final parsed = codec.parse(codec.nack(5, mask).bytes) as NackPacket;
+    expect(parsed.missingMask, mask);
+    expect(parsed.bytes.length, 10);
+  });
+
+  test('legacy 16-bit nack packets still parse', () {
+    final bytes = Uint8List.fromList([
+      kMp1Magic0,
+      kMp1Magic1,
+      kMp1Version,
+      0x03, // kind nack
+      1,
+      0,
+      0x04,
+      0x00,
+    ]);
+    final parsed = codec.parse(bytes) as NackPacket;
+    expect(parsed.missingMask, 0x04);
   });
 
   test('truncated packets throw instead of crashing', () {

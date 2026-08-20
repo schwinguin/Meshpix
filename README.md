@@ -9,7 +9,7 @@ Ein MeshCore-Channel-Datagramm hat **163 Byte** Nutzlast. Ein Handyfoto passt ni
 | Ziel | Typisch | Routing |
 | --- | --- | --- |
 | Preview | 24×24, 4 Farben (immer 1 Paket) oder 16×16 / 24×24 mit 16 Farben wenn es passt | Channel: Flood. DM: Direct |
-| Nachzug | bis 48×48, max. 16 Chunks | nur DM nach *Nachladen*, nie Public-Flood |
+| Nachzug | bis 96×96, max. 32 Chunks (Fallback 80/64/48) | nur DM nach *Nachladen*, nie Public-Flood |
 
 `data_type` für MeshPix-Datagramme: `0xFF50`.
 

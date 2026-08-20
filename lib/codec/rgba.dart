@@ -24,7 +24,7 @@ class RgbaImage {
     out[3] = bytes[o + 3];
   }
 
-  /// Integer nearest-neighbor scale (good enough for 24–48 px previews).
+  /// Integer nearest-neighbor scale (good enough for 24–96 px mesh images).
   RgbaImage resizeNearest(int newW, int newH) {
     if (newW == width && newH == height) return this;
     final out = Uint8List(newW * newH * 4);
