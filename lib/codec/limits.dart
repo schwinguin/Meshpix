@@ -13,3 +13,4 @@ const int kMp1Magic1 = 0x50; // P
 
 const int kPreviewTarget = 24;
 const int kUpgradeTarget = 96;
+const int kJpegUpgradeTarget = 160;

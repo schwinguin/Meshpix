@@ -1,15 +1,15 @@
 # MeshPix
 
-Schlanker MeshCore-Companion für **iOS und Android** (eine Flutter-Codebase). MeshPix schickt keine JPEGs über LoRa, sondern Mini-Bilder im eigenen **MP1**-Format: ein Preview-Paket, optional Chunks nur auf Anfrage.
+Schlanker MeshCore-Companion für **iOS und Android** (eine Flutter-Codebase). Die **Preview** bleibt ein Mini-Bild im eigenen **MP1**-Format (ein LoRa-Paket). Der optionale **Nachzug** im Direct Message ist ein kleines **JPEG** (~160×160), das in Chunks nur auf Anfrage kommt.
 
 ## Warum Mini-Bilder?
 
-Ein MeshCore-Channel-Datagramm hat **163 Byte** Nutzlast. Ein Handyfoto passt nicht. MeshPix skaliert, quantisiert (4 oder 16 Farben) und packt Pixel so, dass die Vorschau in **einem** Paket bleibt.
+Ein MeshCore-Channel-Datagramm hat **163 Byte** Nutzlast. Ein Handyfoto passt nicht in ein Paket. MeshPix skaliert und quantisiert die **Vorschau** (4 oder 16 Farben), damit sie in **einem** Paket bleibt. Wer *Nachladen* tippt, bekommt danach ein JPEG — gleicher Chunk-Budget, aber echte Fotodetails statt 96×96 Pixelart.
 
 | Ziel | Typisch | Routing |
 | --- | --- | --- |
 | Preview | 24×24, 4 Farben (immer 1 Paket) oder 16×16 / 24×24 mit 16 Farben wenn es passt | Channel: Flood. DM: Direct |
-| Nachzug | bis 96×96, max. 32 Chunks (Fallback 80/64/48) | nur DM nach *Nachladen*, nie Public-Flood |
+| Nachzug | JPEG bis ~160×160 in ≤32 Chunks; Fallback 96/80/64/48 Indexed | nur DM nach *Nachladen*, nie Public-Flood |
 
 `data_type` für MeshPix-Datagramme: `0xFF50`.
 

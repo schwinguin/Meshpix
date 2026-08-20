@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'jpeg_upgrade.dart';
 import 'limits.dart';
 import 'packer.dart';
 import 'palettes.dart';
@@ -36,6 +37,7 @@ class DecodedImage {
     required this.indices,
     required this.dithered,
     required this.upgradeChunks,
+    this.argb,
   });
 
   final int width;
@@ -44,8 +46,12 @@ class DecodedImage {
   final List<int> indices;
   final bool dithered;
   final int upgradeChunks;
+  final Uint32List? argb;
+
+  bool get isPhoto => argb != null;
 
   Uint32List toArgb() {
+    if (argb != null) return argb!;
     final out = Uint32List(width * height);
     for (var i = 0; i < indices.length; i++) {
       final idx = indices[i].clamp(0, palette.colors.length - 1);
@@ -108,6 +114,8 @@ class EncodeOptions {
     this.maxChunks = kMaxUpgradeChunks,
     this.previewSize = kPreviewTarget,
     this.upgradeSize = kUpgradeTarget,
+    this.jpegUpgrade = true,
+    this.jpegSize = kJpegUpgradeTarget,
     this.transferId,
   });
 
@@ -118,6 +126,8 @@ class EncodeOptions {
   final int maxChunks;
   final int previewSize;
   final int upgradeSize;
+  final bool jpegUpgrade;
+  final int jpegSize;
   final int? transferId;
 }
 
@@ -129,21 +139,27 @@ class EncodeStats {
     required this.chunkCount,
     required this.upgradeWidth,
     required this.encoding,
-  });
+    int? upgradeHeight,
+    this.upgradeEncoding = BodyEncoding.raw,
+  }) : upgradeHeight = upgradeHeight ?? upgradeWidth;
 
   final int previewBytes;
   final int previewWidth;
   final int previewBpp;
   final int chunkCount;
   final int upgradeWidth;
+  final int upgradeHeight;
   final BodyEncoding encoding;
+  final BodyEncoding upgradeEncoding;
 
   String get summaryDe {
     if (chunkCount == 0) {
       return '1 Paket Preview ($previewWidth×$previewWidth, $previewBpp bit)';
     }
-    return '1 Paket Preview + $chunkCount Chunks Nachzug '
-        '($upgradeWidth×$upgradeWidth)';
+    final kind =
+        upgradeEncoding == BodyEncoding.jpeg ? 'JPEG-Nachzug' : 'Nachzug';
+    return '1 Paket Preview + $chunkCount Chunks $kind '
+        '($upgradeWidth×$upgradeHeight)';
   }
 }
 
@@ -324,6 +340,23 @@ List<ChunkPacket> _chunkBlob({
   return chunks;
 }
 
+Uint8List _blobForJpeg(int width, int height, Uint8List jpeg) {
+  final out = BytesBuilder(copy: false);
+  out.addByte(width);
+  out.addByte(height);
+  out.addByte(0xFF);
+  out.addByte(
+    _flags(
+      kind: Mp1Kind.preview,
+      encoding: BodyEncoding.jpeg,
+      bitsPerPixel: 4,
+      dithered: false,
+    ),
+  );
+  out.add(jpeg);
+  return out.takeBytes();
+}
+
 class Mp1Codec {
   Mp1Codec({Random? random}) : _random = random ?? Random();
 
@@ -367,32 +400,62 @@ class Mp1Codec {
 
     var chunks = <ChunkPacket>[];
     var blob = Uint8List(0);
+    var upgradeEncoding = BodyEncoding.raw;
     if (options.includeUpgrade) {
-      final sizes = <int>{
-        options.upgradeSize,
-        96,
-        80,
-        64,
-        48,
-        32,
-      }.where((s) => s > chosenPreviewImg.width).toList()
-        ..sort((a, b) => b.compareTo(a));
-      upgradeSearch:
-      for (final size in sizes) {
-        for (final pal in [mesh16, mesh4]) {
-          try {
-            final up = _quantizeTo(source, size, pal, options.dither);
-            blob = _blobFor(up);
-            chunks = _chunkBlob(
-              blob: blob,
-              transferId: transferId,
-              maxPayload: options.maxPayload,
-              maxChunks: options.maxChunks,
-            );
-            break upgradeSearch;
-          } catch (_) {
-            chunks = [];
-            blob = Uint8List(0);
+      if (options.jpegUpgrade) {
+        jpegSearch:
+        for (final size in ({options.jpegSize, 160, 128, 96}
+              .where((s) => s > chosenPreviewImg.width)
+              .toList()
+            ..sort((a, b) => b.compareTo(a)))) {
+          for (final quality in const [45, 35, 28, 22]) {
+            try {
+              final jpg = encodeJpegSquare(source, size: size, quality: quality);
+              blob = _blobForJpeg(size, size, jpg);
+              chunks = _chunkBlob(
+                blob: blob,
+                transferId: transferId,
+                maxPayload: options.maxPayload,
+                maxChunks: options.maxChunks,
+              );
+              upgradeEncoding = BodyEncoding.jpeg;
+              break jpegSearch;
+            } catch (_) {
+              chunks = [];
+              blob = Uint8List(0);
+              upgradeEncoding = BodyEncoding.raw;
+            }
+          }
+        }
+      }
+      if (chunks.isEmpty) {
+        final sizes = <int>{
+          options.upgradeSize,
+          96,
+          80,
+          64,
+          48,
+          32,
+        }.where((s) => s > chosenPreviewImg.width).toList()
+          ..sort((a, b) => b.compareTo(a));
+        upgradeSearch:
+        for (final size in sizes) {
+          for (final pal in [mesh16, mesh4]) {
+            try {
+              final up = _quantizeTo(source, size, pal, options.dither);
+              blob = _blobFor(up);
+              chunks = _chunkBlob(
+                blob: blob,
+                transferId: transferId,
+                maxPayload: options.maxPayload,
+                maxChunks: options.maxChunks,
+              );
+              upgradeEncoding = compressBody(up).encoding;
+              break upgradeSearch;
+            } catch (_) {
+              chunks = [];
+              blob = Uint8List(0);
+            }
           }
         }
       }
@@ -421,7 +484,9 @@ class Mp1Codec {
         previewBpp: chosenPreviewImg.bitsPerPixel,
         chunkCount: chunks.length,
         upgradeWidth: chunks.isEmpty ? chosenPreviewImg.width : (blob.isEmpty ? 0 : blob[0]),
+        upgradeHeight: chunks.isEmpty ? chosenPreviewImg.height : (blob.isEmpty ? 0 : blob[1]),
         encoding: packed.encoding,
+        upgradeEncoding: chunks.isEmpty ? BodyEncoding.raw : upgradeEncoding,
       ),
     );
   }
@@ -548,10 +613,22 @@ class Mp1Codec {
     if (blob.length < 4) throw Mp1Exception('truncated upgrade blob');
     final width = blob[0];
     final height = blob[1];
-    final palette = paletteById(blob[2]);
+    final palette = blob[2] == 0xFF ? mesh16 : paletteById(blob[2]);
     final flags = blob[3];
-    final bpp = _bppFromFlags(flags);
     final encoding = _encodingFromFlags(flags);
+    if (encoding == BodyEncoding.jpeg) {
+      final photo = decodeJpegToArgb(blob.sublist(4));
+      return DecodedImage(
+        width: photo.width,
+        height: photo.height,
+        palette: palette,
+        indices: const [],
+        dithered: false,
+        upgradeChunks: 0,
+        argb: photo.argb,
+      );
+    }
+    final bpp = _bppFromFlags(flags);
     final body = PackedBody(encoding, blob.sublist(4));
     final indices = decodeBody(
       body: body,

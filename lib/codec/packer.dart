@@ -4,7 +4,7 @@ import 'package:archive/archive.dart';
 
 import 'quantize.dart';
 
-enum BodyEncoding { raw, zlib, rle }
+enum BodyEncoding { raw, zlib, rle, jpeg }
 
 Uint8List packIndices(List<int> indices, int bitsPerPixel) {
   if (bitsPerPixel == 4) {
@@ -128,5 +128,7 @@ List<int> decodeBody({
       return unpackIndices(raw, count, bitsPerPixel);
     case BodyEncoding.rle:
       return rleDecode(body.bytes, count);
+    case BodyEncoding.jpeg:
+      throw const FormatException('JPEG bodies are not indexed');
   }
 }

@@ -124,11 +124,11 @@ class _ComposerScreenState extends State<ComposerScreen> {
             },
           ),
           SwitchListTile(
-            title: const Text('Nachzug bis 96px (nur Direct/DM)'),
+            title: const Text('JPEG-Nachzug (Foto, nur Direct/DM)'),
             subtitle: Text(
               channel
                   ? 'Public Channel: nur Preview, kein Flood der Chunks'
-                  : 'Empfänger tippt Nachladen. Passt es nicht, fällt auf 80/64/48 zurück.',
+                  : 'Empfänger tippt Nachladen. Ziel ~160px JPEG, sonst 96px Pixelart.',
             ),
             value: _upgrade && !channel,
             onChanged: channel

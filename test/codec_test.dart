@@ -53,7 +53,7 @@ void main() {
     expect(parsed.image.indices, encoded.preview.image.indices);
   });
 
-  test('upgrade defaults to 96x96 within 32 chunks', () {
+  test('upgrade defaults to a JPEG photo within 32 chunks', () {
     final encoded = codec.encode(
       src,
       options: const EncodeOptions(
@@ -62,7 +62,8 @@ void main() {
         transferId: 42,
       ),
     );
-    expect(encoded.stats.upgradeWidth, 96);
+    expect(encoded.stats.upgradeEncoding, BodyEncoding.jpeg);
+    expect(encoded.stats.upgradeWidth, greaterThanOrEqualTo(96));
     expect(encoded.chunks.length, greaterThan(0));
     expect(encoded.chunks.length, lessThanOrEqualTo(kMaxUpgradeChunks));
     for (final c in encoded.chunks) {
@@ -72,8 +73,28 @@ void main() {
     final blob = codec.reassembleChunks(parts);
     expect(blob, encoded.upgradeBlob);
     final image = codec.decodeUpgradeBlob(blob);
-    expect(image.width, 96);
-    expect(image.height, 96);
+    expect(image.isPhoto, isTrue);
+    expect(image.width, encoded.stats.upgradeWidth);
+    expect(image.height, encoded.stats.upgradeHeight);
+    expect(image.toArgb().length, image.width * image.height);
+  });
+
+  test('indexed 96px upgrade still works when JPEG is disabled', () {
+    final encoded = codec.encode(
+      src,
+      options: const EncodeOptions(
+        includeUpgrade: true,
+        jpegUpgrade: false,
+        fourColorPreview: true,
+        transferId: 44,
+      ),
+    );
+    expect(encoded.stats.upgradeWidth, 96);
+    expect(encoded.stats.upgradeEncoding, isNot(BodyEncoding.jpeg));
+    final image = codec.decodeUpgradeBlob(
+      codec.reassembleChunks(encoded.chunks.map((c) => c.slice).toList()),
+    );
+    expect(image.isPhoto, isFalse);
     expect(image.indices.length, 96 * 96);
   });
 
