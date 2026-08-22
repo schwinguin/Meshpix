@@ -95,6 +95,9 @@ void main() {
 
     final conv = app.sessions['anna']!.conversations.firstWhere((c) => !c.isChannel);
     final out = conv.messages.firstWhere((m) => m.outgoing);
+    // Sender-Blase zeigt nur das Bild, keinen Info-Text.
+    expect(out.text, isNull,
+        reason: 'Kein Summary-Text in der eigenen Blase');
     final img = out.image!;
     // Nicht die quantisierte 24/48px-Preview, sondern das Original.
     expect(img.isPhoto, isTrue,

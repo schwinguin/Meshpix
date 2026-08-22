@@ -292,7 +292,6 @@ class AppController extends ChangeNotifier {
         timestamp: DateTime.now(),
         image: local,
         transferId: sent.transferId,
-        text: sent.stats.summaryDe,
       ),
     );
     notifyListeners();
