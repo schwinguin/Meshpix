@@ -109,18 +109,45 @@ Uint8List cmdExportContact([List<int>? publicKey]) {
 Uint8List cmdImportContact(Uint8List card) =>
     Uint8List.fromList([Cmd.importContact, ...card]);
 
+Uint8List cmdSendLogin({
+  required List<int> publicKey,
+  required String password,
+}) {
+  return Uint8List.fromList([
+    Cmd.sendLogin,
+    ..._pad(publicKey, 32),
+    ...utf8.encode(password),
+  ]);
+}
+
+Uint8List cmdSendTracePath({
+  required List<int> path,
+  int tag = 1,
+  int authCode = 0,
+  int flags = 0,
+}) {
+  return Uint8List.fromList([
+    Cmd.sendTracePath,
+    ..._u32(tag),
+    ..._u32(authCode),
+    flags,
+    ...path,
+  ]);
+}
+
 Uint8List cmdSendTxtMsg({
   required Uint8List pubkeyPrefix,
   required String text,
   int timestamp = 0,
   int attempt = 0,
+  int txtType = TxtType.plain,
 }) {
   final prefix = Uint8List(6);
   final n = pubkeyPrefix.length < 6 ? pubkeyPrefix.length : 6;
   prefix.setRange(0, n, pubkeyPrefix);
   return Uint8List.fromList([
     Cmd.sendTxtMsg,
-    TxtType.plain,
+    txtType,
     attempt,
     ..._u32(timestamp),
     ...prefix,
@@ -182,3 +209,8 @@ int readI32(Uint8List d, int o) {
 int readU16(Uint8List d, int o) => d[o] | (d[o + 1] << 8);
 
 int readI8(int b) => b > 127 ? b - 256 : b;
+
+int readI16(Uint8List d, int o) {
+  final u = readU16(d, o);
+  return u > 0x7FFF ? u - 0x10000 : u;
+}

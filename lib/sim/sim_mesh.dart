@@ -7,6 +7,7 @@ import '../companion/control.dart';
 import '../models/channel.dart';
 import '../models/contact.dart';
 import '../models/device.dart';
+import '../models/repeater.dart';
 import '../transfer/protocol.dart';
 
 class SimIdentity {
@@ -16,8 +17,37 @@ class SimIdentity {
   final Uint8List publicKey;
 }
 
+class SimVirtualRepeater {
+  SimVirtualRepeater({
+    required this.contact,
+    this.password = 'password',
+  }) : name = contact.name;
+
+  final MeshContact contact;
+  String password;
+  String name;
+  final acl = <String, int>{};
+  int uptimeSecs = 4 * 3600 + 13 * 60;
+  int milliVolts = 4012;
+  final neighbors = <RepeaterNeighbor>[
+    RepeaterNeighbor(
+      prefixHex: 'a1b2c3',
+      heard: DateTime.now().subtract(const Duration(minutes: 2)),
+      snr: 7.5,
+    ),
+    RepeaterNeighbor(
+      prefixHex: 'd4e5f6',
+      heard: DateTime.now().subtract(const Duration(minutes: 11)),
+      snr: 3.25,
+    ),
+  ];
+
+  bool isAuthed(String radioId) => acl.containsKey(radioId);
+}
+
 class SimMesh {
   final _radios = <String, SimRadio>{};
+  SimVirtualRepeater? repeater;
 
   void attach(SimRadio radio) => _radios[radio.identity.id] = radio;
 
@@ -108,13 +138,15 @@ class SimRadio implements PacketRadio, CompanionControl {
       );
 
   void loadPeers() {
+    final extras = contacts.where((c) => !c.isChat).toList();
     contacts
       ..clear()
       ..addAll(
         mesh._radios.values
             .where((r) => r.identity.id != identity.id)
             .map(_contactFor),
-      );
+      )
+      ..addAll(extras);
   }
 
   MeshContact _contactFor(SimRadio r) {
@@ -263,11 +295,154 @@ class SimRadio implements PacketRadio, CompanionControl {
   }
 
   @override
-  Future<void> ping(MeshContact contact) async {
+  Future<void> ping(MeshContact contact) => requestStatus(contact);
+
+  @override
+  Future<void> requestStatus(MeshContact contact) async {
+    final status = RepeaterStatus(
+      milliVolts: mesh.repeater?.milliVolts ?? 3920,
+      queueLen: 1,
+      noiseFloor: -98,
+      lastRssi: -91,
+      packetsRecv: 1280,
+      packetsSent: 940,
+      airtimeSecs: 180,
+      uptimeSecs: mesh.repeater?.uptimeSecs ?? 3600,
+      sentFlood: 400,
+      sentDirect: 540,
+      recvFlood: 700,
+      recvDirect: 580,
+      lastSnr: 6.5,
+    );
     _notices.add(
       CompanionNotice.status(
         prefix: contact.publicKey.take(6).toList(),
-        statusSummary: 'Ping OK · ${12 + _rng.nextInt(30)} ms · ${contact.hopCount} Hop',
+        statusSummary: '${status.summary} · ${12 + _rng.nextInt(30)} ms',
+        repeaterStatus: status,
+      ),
+    );
+  }
+
+  @override
+  Future<void> requestTelemetry(MeshContact contact) => requestStatus(contact);
+
+  @override
+  Future<void> loginRepeater(MeshContact contact, String password) async {
+    final node = mesh.repeater;
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final ok = node != null &&
+        _prefixEq(Uint8List.fromList(node.contact.publicKey), Uint8List.fromList(contact.publicKey)) &&
+        password == node.password;
+    if (ok) {
+      node.acl[identity.id] = 3;
+    }
+    _notices.add(
+      CompanionNotice.login(
+        prefix: contact.publicKey.take(6).toList(),
+        ok: ok,
+        isAdmin: ok,
+        permissions: ok ? 3 : 0,
+      ),
+    );
+  }
+
+  @override
+  Future<void> logoutRepeater(MeshContact contact) async {
+    mesh.repeater?.acl.remove(identity.id);
+    _notices.add(
+      CompanionNotice.cli(
+        prefix: contact.publicKey.take(6).toList(),
+        cliText: 'OK',
+      ),
+    );
+  }
+
+  @override
+  Future<void> sendCli(MeshContact contact, String command) async {
+    await Future<void>.delayed(const Duration(milliseconds: 15));
+    final node = mesh.repeater;
+    final prefix = contact.publicKey.take(6).toList();
+    if (node == null ||
+        !_prefixEq(Uint8List.fromList(node.contact.publicKey), Uint8List.fromList(contact.publicKey))) {
+      _notices.add(CompanionNotice.cli(prefix: prefix, cliText: 'ERR: unknown node'));
+      return;
+    }
+    if (!node.isAuthed(identity.id) && command.trim() != 'logout') {
+      _notices.add(CompanionNotice.cli(prefix: prefix, cliText: 'ERR: not logged in'));
+      return;
+    }
+    _notices.add(
+      CompanionNotice.cli(prefix: prefix, cliText: _cliReply(node, command.trim())),
+    );
+  }
+
+  String _cliReply(SimVirtualRepeater node, String command) {
+    final parts = command.split(RegExp(r'\s+'));
+    final verb = parts.isEmpty ? '' : parts.first.toLowerCase();
+    switch (verb) {
+      case 'ver':
+        return 'v1.8.0 sim-repeater';
+      case 'board':
+        return 'MeshPix Simulator';
+      case 'clock':
+        if (parts.length > 1 && parts[1] == 'sync') return 'OK time synced';
+        return DateTime.now().toUtc().toIso8601String();
+      case 'get':
+        if (parts.length < 2) return 'ERR: get <name>';
+        switch (parts[1]) {
+          case 'name':
+            return node.name;
+          case 'radio':
+            return '869.525,250,11,5';
+          case 'tx':
+            return '22';
+          default:
+            return 'ERR: unknown';
+        }
+      case 'set':
+        if (parts.length >= 3 && parts[1] == 'name') {
+          node.name = parts.sublist(2).join(' ');
+          return 'OK';
+        }
+        if (parts.length >= 3 && parts[1] == 'perm' || parts.first == 'setperm') {
+          return 'OK';
+        }
+        return 'OK';
+      case 'setperm':
+        return 'OK';
+      case 'neighbors':
+        return node.neighbors
+            .map((n) {
+              final epoch = (n.heard ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
+              final snr4 = ((n.snr ?? 0) * 4).round();
+              return '${n.prefixHex}:$epoch:$snr4';
+            })
+            .join('\n');
+      case 'advert':
+        return 'OK';
+      case 'advert.zerohop':
+        return 'OK';
+      case 'reboot':
+      case 'clkreboot':
+        node.acl.clear();
+        return 'OK';
+      case 'logout':
+        node.acl.remove(identity.id);
+        return 'OK';
+      case 'help':
+        return repeaterQuickActions.join('\n');
+      default:
+        return 'ERR: unknown cmd';
+    }
+  }
+
+  @override
+  Future<void> tracePath(MeshContact contact) async {
+    final hops = contact.hopCount;
+    _notices.add(
+      CompanionNotice.trace(
+        prefix: contact.publicKey.take(6).toList(),
+        traceSummary: hops == 0 ? 'Trace · direkt' : 'Trace · $hops Hops',
       ),
     );
   }

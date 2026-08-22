@@ -11,6 +11,7 @@ import '../models/channel.dart';
 import '../models/chat.dart';
 import '../models/contact.dart';
 import '../models/device.dart';
+import '../models/repeater.dart';
 import '../models/uri_card.dart';
 import '../sim/sim_mesh.dart';
 import '../transfer/engine.dart';
@@ -55,6 +56,7 @@ class AppController extends ChangeNotifier {
   final bleHits = <BleScanHit>[];
   bool scanning = false;
   int homeTab = 0;
+  final repeaterSessions = <String, RepeaterSession>{};
 
   CompanionClient? _bleClient;
   BleTransport? _bleTransport;
@@ -101,6 +103,16 @@ class AppController extends ChangeNotifier {
     final benRadio = SimRadio(mesh: mesh, identity: ben);
     annaRadio.loadPeers();
     benRadio.loadPeers();
+    final relay = MeshContact(
+      publicKey: keyFromSeed(99),
+      name: 'Relay1',
+      type: AdvType.repeater,
+      outPath: Uint8List.fromList([0x02, 0x07]),
+      lastAdvert: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    );
+    mesh.repeater = SimVirtualRepeater(contact: relay);
+    annaRadio.contacts.add(relay);
+    benRadio.contacts.add(relay);
     sessions['anna'] = _sessionForSim(annaRadio);
     sessions['ben'] = _sessionForSim(benRadio);
     activeNodeId = 'anna';
@@ -434,7 +446,97 @@ class AppController extends ChangeNotifier {
   Future<void> ping(MeshContact contact) async {
     status = 'Ping an ${contact.name} …';
     notifyListeners();
-    await companion?.ping(contact);
+    await companion?.requestStatus(contact);
+  }
+
+  RepeaterSession repeaterSession(MeshContact contact) {
+    return repeaterSessions.putIfAbsent(
+      contact.keyHex,
+      () => RepeaterSession(contact),
+    );
+  }
+
+  RepeaterSession? _repeaterByPrefix(List<int>? prefix) {
+    if (prefix == null || prefix.isEmpty) return null;
+    for (final session in repeaterSessions.values) {
+      final key = session.contact.publicKey;
+      if (key.length < prefix.length) continue;
+      var ok = true;
+      for (var i = 0; i < prefix.length && i < 6; i++) {
+        if (key[i] != prefix[i]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return session;
+    }
+    for (final c in contacts) {
+      if (c.publicKey.length < prefix.length) continue;
+      var ok = true;
+      for (var i = 0; i < prefix.length && i < 6; i++) {
+        if (c.publicKey[i] != prefix[i]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return repeaterSession(c);
+    }
+    return null;
+  }
+
+  Future<void> loginRepeater(MeshContact contact, String password) async {
+    final session = repeaterSession(contact);
+    session.busy = true;
+    session.lastError = null;
+    session.transcript.add(CliLine(kind: CliLineKind.info, text: 'Login …'));
+    notifyListeners();
+    try {
+      await companion?.loginRepeater(contact, password);
+    } catch (e) {
+      session.lastError = '$e';
+      session.busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> logoutRepeater(MeshContact contact) async {
+    final session = repeaterSession(contact);
+    session.transcript.add(CliLine(kind: CliLineKind.sent, text: 'logout'));
+    await companion?.logoutRepeater(contact);
+    session.loggedIn = false;
+    session.isAdmin = false;
+    session.permissions = 0;
+    notifyListeners();
+  }
+
+  Future<void> sendCli(MeshContact contact, String command) async {
+    final trimmed = command.trim();
+    if (trimmed.isEmpty) return;
+    final session = repeaterSession(contact);
+    session.lastCommand = trimmed;
+    session.transcript.add(CliLine(kind: CliLineKind.sent, text: trimmed));
+    session.busy = true;
+    notifyListeners();
+    try {
+      await companion?.sendCli(contact, trimmed);
+    } catch (e) {
+      session.transcript.add(CliLine(kind: CliLineKind.error, text: '$e'));
+      session.busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> requestRepeaterStatus(MeshContact contact) async {
+    final session = repeaterSession(contact);
+    session.busy = true;
+    notifyListeners();
+    await companion?.requestStatus(contact);
+  }
+
+  Future<void> traceRepeater(MeshContact contact) async {
+    status = 'Trace ${contact.name} …';
+    notifyListeners();
+    await companion?.tracePath(contact);
   }
 
   Future<void> shareZeroHop(MeshContact contact) async {
@@ -484,8 +586,67 @@ class AppController extends ChangeNotifier {
         }
       case CompanionNoticeKind.status:
         status = n.statusSummary;
+        final st = _repeaterByPrefix(n.pubkey);
+        if (st != null) {
+          st.status = n.repeaterStatus ?? st.status;
+          st.busy = false;
+        }
       case CompanionNoticeKind.pathUpdated:
         status = 'Pfad aktualisiert';
+      case CompanionNoticeKind.login:
+        final login = _repeaterByPrefix(n.pubkey);
+        if (login != null) {
+          login
+            ..loggedIn = true
+            ..isAdmin = n.isAdmin ?? ((n.permissions ?? 0) & 1) == 1
+            ..permissions = n.permissions ?? 0
+            ..busy = false
+            ..lastError = null
+            ..transcript.add(
+              CliLine(kind: CliLineKind.info, text: 'Login OK · ${login.roleLabel}'),
+            );
+        }
+        status = 'Repeater-Login OK';
+      case CompanionNoticeKind.loginFail:
+        final fail = _repeaterByPrefix(n.pubkey);
+        if (fail != null) {
+          fail
+            ..loggedIn = false
+            ..busy = false
+            ..lastError = 'Login fehlgeschlagen'
+            ..transcript.add(
+              CliLine(kind: CliLineKind.error, text: 'Login fehlgeschlagen'),
+            );
+        }
+        status = 'Repeater-Login fehlgeschlagen';
+      case CompanionNoticeKind.cli:
+        final cli = _repeaterByPrefix(n.pubkey);
+        if (cli != null) {
+          final text = n.cliText ?? '';
+          cli
+            ..busy = false
+            ..transcript.add(CliLine(kind: CliLineKind.reply, text: text));
+          if ((cli.lastCommand ?? '').startsWith('neighbors')) {
+            final parsed = parseNeighborsReply(text);
+            if (parsed.isNotEmpty) {
+              cli.neighbors
+                ..clear()
+                ..addAll(parsed);
+            }
+          }
+          if (cli.lastCommand == 'logout' || text.toLowerCase().contains('logout')) {
+            cli.loggedIn = false;
+            cli.isAdmin = false;
+          }
+        }
+      case CompanionNoticeKind.trace:
+        status = n.traceSummary ?? 'Trace empfangen';
+        final tr = _repeaterByPrefix(n.pubkey);
+        if (tr != null) {
+          tr.transcript.add(
+            CliLine(kind: CliLineKind.info, text: n.traceSummary ?? 'Trace'),
+          );
+        }
     }
     notifyListeners();
   }
@@ -674,6 +835,7 @@ class AppController extends ChangeNotifier {
       }
     }
     sessions.clear();
+    repeaterSessions.clear();
   }
 
   void _disconnectBle() {

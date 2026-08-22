@@ -200,8 +200,46 @@ class CompanionClient implements PacketRadio, CompanionControl {
   }
 
   @override
-  Future<void> ping(MeshContact contact) =>
+  Future<void> ping(MeshContact contact) => requestStatus(contact);
+
+  @override
+  Future<void> requestStatus(MeshContact contact) =>
       _send(cmdSendStatusReq(contact.publicKey));
+
+  @override
+  Future<void> requestTelemetry(MeshContact contact) =>
+      _send(cmdSendTelemetryReq(contact.publicKey));
+
+  @override
+  Future<void> loginRepeater(MeshContact contact, String password) =>
+      _send(cmdSendLogin(publicKey: contact.publicKey, password: password));
+
+  @override
+  Future<void> logoutRepeater(MeshContact contact) =>
+      sendCli(contact, 'logout');
+
+  @override
+  Future<void> sendCli(MeshContact contact, String command) async {
+    final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await _send(
+      cmdSendTxtMsg(
+        pubkeyPrefix: Uint8List.fromList(contact.publicKey.take(6).toList()),
+        text: command,
+        timestamp: ts,
+        txtType: TxtType.cli,
+      ),
+    );
+  }
+
+  @override
+  Future<void> tracePath(MeshContact contact) async {
+    await _send(
+      cmdSendTracePath(
+        path: contact.outPath ?? const [],
+        tag: DateTime.now().millisecondsSinceEpoch & 0x7fffffff,
+      ),
+    );
+  }
 
   @override
   Future<void> shareContactZeroHop(MeshContact contact) =>
@@ -279,15 +317,43 @@ class CompanionClient implements PacketRadio, CompanionControl {
     }
     if (parsed.incoming != null) {
       _incoming.add(parsed.incoming!);
+      final incoming = parsed.incoming!;
+      if (incoming.txtType == TxtType.cli && incoming.text != null) {
+        _notices.add(
+          CompanionNotice.cli(
+            prefix: incoming.senderPrefix ?? const [],
+            cliText: incoming.text!,
+          ),
+        );
+      }
     }
     if (parsed.ackCode != null) {
       _notices.add(CompanionNotice.ack(ackCode: parsed.ackCode!, rttMs: parsed.rttMs ?? 0));
+    }
+    if (parsed.loginOk != null) {
+      _notices.add(
+        CompanionNotice.login(
+          prefix: parsed.advertKey ?? const [],
+          ok: parsed.loginOk!,
+          isAdmin: parsed.isAdmin,
+          permissions: parsed.permissions,
+        ),
+      );
     }
     if (parsed.statusSummary != null) {
       _notices.add(
         CompanionNotice.status(
           prefix: parsed.advertKey ?? const [],
           statusSummary: parsed.statusSummary!,
+          repeaterStatus: parsed.repeaterStatus,
+        ),
+      );
+    }
+    if (parsed.traceSummary != null) {
+      _notices.add(
+        CompanionNotice.trace(
+          traceSummary: parsed.traceSummary,
+          prefix: parsed.advertKey,
         ),
       );
     }

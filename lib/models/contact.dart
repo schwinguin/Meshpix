@@ -56,6 +56,7 @@ class MeshContact {
   bool get isFavourite => (flags & ContactFlags.favourite) != 0;
   bool get isMuted => (flags & ContactFlags.muted) != 0;
   bool get isChat => type == AdvType.chat || type == AdvType.none;
+  bool get isAdminNode => type == AdvType.repeater || type == AdvType.room;
   bool get hasLocation => lat != null && lon != null && (lat != 0 || lon != 0);
 
   String get keyHex =>

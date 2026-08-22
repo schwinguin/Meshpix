@@ -7,6 +7,7 @@ import '../state/app_controller.dart';
 import 'chat_screen.dart';
 import 'contact_detail.dart';
 import 'format.dart';
+import 'repeater_admin_screen.dart';
 import 'theme.dart';
 
 class ContactsPane extends StatelessWidget {
@@ -47,6 +48,13 @@ class ContactsPane extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute<void>(builder: (_) => const ChatScreen()),
+              );
+            } else if (c.isAdminNode) {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => RepeaterAdminScreen(contact: c),
+                ),
               );
             } else {
               Navigator.push(

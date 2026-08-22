@@ -32,6 +32,7 @@ Neben Bildern spricht MeshPix dasselbe Companion-Protokoll wie MeshCore One:
 - Radio: Frequenz, SF, BW, CR, TX-Power + regionale **Presets** (EU/US/AU/UK)
 - Batterie, Firmware, Advert-Name
 - Kontaktkarte als **QR / `meshcore://contact/add?...`** (kompatibel mit MeshCore One)
+- **Repeater / Room Admin**: Login, Status (Batterie, Uptime, SNR, Pakete), Nachbarn, CLI, ACL `setperm`, Pfad-Trace, Reboot mit Bestätigung
 
 ## Protokoll (Companion-Subset)
 
@@ -44,6 +45,7 @@ Handshake und Traffic folgen der [Companion Radio Protocol](https://docs.meshcor
 - Bilder Channel: `CMD_SEND_CHANNEL_DATA` (`0x3E`)
 - Bilder DM: `CMD_SEND_RAW_DATA` (`0x19`)
 - Funk: `CMD_SET_RADIO_PARAMS`, `CMD_SET_RADIO_TX_POWER`, `CMD_GET_BATT_AND_STORAGE`
+- Repeater-Admin: `CMD_SEND_LOGIN`, CLI als `TXT_TYPE_CLI_DATA`, `CMD_SEND_STATUS_REQ`, `CMD_SEND_TRACE_PATH`
 - Empfang: `RESP_CODE_CHANNEL_DATA_RECV`, `PUSH_CODE_RAW_DATA`, Message-Sync
 
 Unbekannte `data_type`-Werte werden ignoriert.
@@ -82,4 +84,4 @@ Signing, Provisioning und Play/App-Store-Release sind nicht Teil dieses MVP.
 
 ## Limits (bewusst)
 
-Keine Offline-Karte, kein Repeater-Admin-Login, kein Firmware-Flash, keine Line-of-Sight / Noise-Floor-Charts, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion.
+Keine Offline-Karte, kein Firmware-Flash, keine Line-of-Sight-Karten, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion. Der Simulator enthält **Relay1** (Passwort `password`).

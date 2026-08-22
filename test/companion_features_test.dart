@@ -8,6 +8,7 @@ import 'package:meshpix/companion/parser.dart';
 import 'package:meshpix/models/chat.dart';
 import 'package:meshpix/models/contact.dart';
 import 'package:meshpix/models/device.dart';
+import 'package:meshpix/models/repeater.dart';
 import 'package:meshpix/models/uri_card.dart';
 import 'package:meshpix/state/app_controller.dart';
 
@@ -141,5 +142,93 @@ void main() {
     expect(eu.settings.freqMhz, 869.525);
     expect(eu.settings.spreadingFactor, 11);
     expect(eu.settings.bwKhz, 250);
+  });
+
+  test('repeater status blob matches RepeaterStats layout', () {
+    final data = Uint8List(48);
+    data[0] = 0xB8;
+    data[1] = 0x0F; // 4024 mV
+    data[2] = 3;
+    data[3] = 0; // queue
+    data[4] = 0x9E;
+    data[5] = 0xFF; // noise -98
+    data[6] = 0xA6;
+    data[7] = 0xFF; // rssi -90
+    final recv = 1280;
+    data[8] = recv & 0xFF;
+    data[9] = (recv >> 8) & 0xFF;
+    data[20] = 0x10;
+    data[21] = 0x0E;
+    data[22] = 0;
+    data[23] = 0; // uptime 3600
+    data[42] = 26;
+    data[43] = 0; // snr 6.5
+    final s = parseRepeaterStatus(data);
+    expect(s.milliVolts, 4024);
+    expect(s.queueLen, 3);
+    expect(s.noiseFloor, -98);
+    expect(s.lastRssi, -90);
+    expect(s.packetsRecv, 1280);
+    expect(s.uptimeSecs, 3600);
+    expect(s.lastSnr, closeTo(6.5, 0.01));
+  });
+
+  test('neighbors CLI lines parse like MeshCore One', () {
+    final list = parseNeighborsReply('a1b2c3:1710000000:24\nd4e5f6:1710000100:10\n');
+    expect(list, hasLength(2));
+    expect(list.first.prefixHex, 'a1b2c3');
+    expect(list.first.snr, 6.0);
+    expect(isDangerCli('reboot'), isTrue);
+    expect(isDangerCli('get reboot.interval'), isFalse);
+  });
+
+  test('login + CLI stay out of the chat log', () async {
+    final app = AppController();
+    addTearDown(app.dispose);
+    final relay = app.contacts.firstWhere((c) => c.name == 'Relay1');
+    expect(relay.type, AdvType.repeater);
+
+    await app.loginRepeater(relay, 'wrong');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(app.repeaterSession(relay).loggedIn, isFalse);
+
+    await app.loginRepeater(relay, 'password');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(app.repeaterSession(relay).loggedIn, isTrue);
+    expect(app.repeaterSession(relay).isAdmin, isTrue);
+
+    await app.sendCli(relay, 'ver');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    final session = app.repeaterSession(relay);
+    expect(session.transcript.any((l) => l.text.contains('v1.8.0')), isTrue);
+
+    await app.sendCli(relay, 'neighbors');
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(session.neighbors, isNotEmpty);
+
+    final chat = app.sessions['anna']!.conversations.firstWhere((c) => c.title == 'Relay1');
+    expect(chat.messages, isEmpty, reason: 'CLI darf nicht in den Chat');
+  });
+
+  test('login and CLI frames encode', () {
+    final key = List<int>.generate(32, (i) => i);
+    final login = cmdSendLogin(publicKey: key, password: 'password');
+    expect(login[0], Cmd.sendLogin);
+    expect(login.sublist(1, 33), key);
+    expect(String.fromCharCodes(login.sublist(33)), 'password');
+
+    final cli = cmdSendTxtMsg(
+      pubkeyPrefix: Uint8List.fromList(key.take(6).toList()),
+      text: 'ver',
+      txtType: TxtType.cli,
+    );
+    expect(cli[1], TxtType.cli);
+
+    final ok = parseCompanionFrame(
+      Uint8List.fromList([Resp.loginSuccess, 1, ...key.take(6)]),
+      meshPixDataType: kMeshPixDataType,
+    );
+    expect(ok?.loginOk, isTrue);
+    expect(ok?.isAdmin, isTrue);
   });
 }

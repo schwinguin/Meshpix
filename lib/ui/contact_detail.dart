@@ -5,6 +5,7 @@ import '../models/contact.dart';
 import '../state/app_controller.dart';
 import 'chat_screen.dart';
 import 'format.dart';
+import 'repeater_admin_screen.dart';
 import 'share_card.dart';
 import 'theme.dart';
 
@@ -60,6 +61,19 @@ class ContactDetailScreen extends StatelessWidget {
               ),
             ),
           const Divider(),
+          if (live.isAdminNode)
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => RepeaterAdminScreen(contact: live),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: Text(live.type == AdvType.room ? 'Room Admin' : 'Repeater Admin'),
+            ),
           if (live.isChat)
             FilledButton.icon(
               onPressed: () {

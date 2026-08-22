@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../models/channel.dart';
 import '../models/contact.dart';
 import '../models/device.dart';
+import '../models/repeater.dart';
 import '../transfer/protocol.dart';
 import 'constants.dart';
 import 'control.dart';
@@ -25,6 +26,11 @@ class ParsedFrame {
     this.advertKey,
     this.exportCard,
     this.statusSummary,
+    this.repeaterStatus,
+    this.loginOk,
+    this.isAdmin,
+    this.permissions,
+    this.traceSummary,
   });
 
   final int code;
@@ -41,6 +47,11 @@ class ParsedFrame {
   final Uint8List? advertKey;
   final Uint8List? exportCard;
   final String? statusSummary;
+  final RepeaterStatus? repeaterStatus;
+  final bool? loginOk;
+  final bool? isAdmin;
+  final int? permissions;
+  final String? traceSummary;
 }
 
 String _cstr(Uint8List d, int start, int maxLen) {
@@ -123,9 +134,31 @@ ParsedFrame? parseCompanionFrame(Uint8List d, {required int meshPixDataType}) {
       );
     case Resp.statusResponse:
     case Resp.telemetryResponse:
+      final status = _parseRepeaterStatusFrame(d);
       return ParsedFrame(
         code,
-        statusSummary: _parseStatus(d),
+        statusSummary: status.summary,
+        repeaterStatus: status,
+        advertKey: d.length >= 8 ? d.sublist(2, 8) : null,
+      );
+    case Resp.loginSuccess:
+      return ParsedFrame(
+        code,
+        loginOk: true,
+        isAdmin: d.length > 1 ? (d[1] & 0x01) == 1 : false,
+        permissions: d.length > 12 ? d[12] : (d.length > 1 ? d[1] : 0),
+        advertKey: d.length >= 8 ? d.sublist(2, 8) : null,
+      );
+    case Resp.loginFail:
+      return ParsedFrame(
+        code,
+        loginOk: false,
+        advertKey: d.length >= 8 ? d.sublist(2, 8) : null,
+      );
+    case Resp.traceData:
+      return ParsedFrame(
+        code,
+        traceSummary: _parseTrace(d),
         advertKey: d.length >= 8 ? d.sublist(2, 8) : null,
       );
     default:
@@ -280,7 +313,8 @@ IncomingPacket _parseContactText(Uint8List d, {required bool v3}) {
   o += 6;
   final pathLen = d[o];
   o += 1;
-  o += 1; // txt type
+  final txtType = d[o];
+  o += 1;
   final ts = d.length >= o + 4 ? readU32(d, o) : 0;
   o += 4;
   final text = utf8.decode(d.sublist(o), allowMalformed: true);
@@ -293,6 +327,7 @@ IncomingPacket _parseContactText(Uint8List d, {required bool v3}) {
     hopCount: pathLen == 0xFF ? 0 : pathLen,
     timestamp: ts == 0 ? null : ts,
     snr: snr,
+    txtType: txtType,
   );
 }
 
@@ -364,15 +399,45 @@ IncomingPacket _parseRawData(Uint8List d, {required int meshPixDataType}) {
   );
 }
 
-String _parseStatus(Uint8List d) {
-  if (d.length < 8) return 'Antwort empfangen';
-  final rest = d.sublist(8);
-  if (rest.isEmpty) return 'Status OK';
-  if (rest.length >= 2) {
-    final mv = rest[0] | (rest[1] << 8);
-    if (mv > 2000 && mv < 5000) {
-      return 'Status · ${(mv / 1000).toStringAsFixed(2)} V';
+RepeaterStatus _parseRepeaterStatusFrame(Uint8List d) {
+  if (d.length < 8) return const RepeaterStatus(rawSummary: 'Antwort empfangen');
+  return parseRepeaterStatus(d.sublist(8));
+}
+
+/// `RepeaterStats` from MeshCore simple_repeater (little-endian).
+RepeaterStatus parseRepeaterStatus(Uint8List data) {
+  if (data.isEmpty) return const RepeaterStatus(rawSummary: 'Status OK');
+  if (data.length < 24) {
+    if (data.length >= 2) {
+      final mv = readU16(data, 0);
+      if (mv > 2000 && mv < 5000) {
+        return RepeaterStatus(
+          milliVolts: mv,
+          rawSummary: 'Status · ${(mv / 1000).toStringAsFixed(2)} V',
+        );
+      }
     }
+    return RepeaterStatus(rawSummary: 'Status · ${data.length} Byte');
   }
-  return 'Status · ${rest.length} Byte';
+  return RepeaterStatus(
+    milliVolts: readU16(data, 0),
+    queueLen: readU16(data, 2),
+    noiseFloor: readI16(data, 4),
+    lastRssi: readI16(data, 6),
+    packetsRecv: data.length >= 12 ? readU32(data, 8) : null,
+    packetsSent: data.length >= 16 ? readU32(data, 12) : null,
+    airtimeSecs: data.length >= 20 ? readU32(data, 16) : null,
+    uptimeSecs: data.length >= 24 ? readU32(data, 20) : null,
+    sentFlood: data.length >= 28 ? readU32(data, 24) : null,
+    sentDirect: data.length >= 32 ? readU32(data, 28) : null,
+    recvFlood: data.length >= 36 ? readU32(data, 32) : null,
+    recvDirect: data.length >= 40 ? readU32(data, 36) : null,
+    lastSnr: data.length >= 44 ? readI16(data, 42) / 4.0 : null,
+  );
+}
+
+String _parseTrace(Uint8List d) {
+  if (d.length < 4) return 'Trace empfangen';
+  final pathLen = d.length > 2 ? d[2] : 0;
+  return 'Trace · $pathLen Hop${pathLen == 1 ? '' : 's'}';
 }

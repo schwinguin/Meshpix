@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../codec/limits.dart';
 import '../codec/mp1.dart';
+import '../companion/constants.dart';
 import '../companion/control.dart';
 import 'protocol.dart';
 
@@ -246,6 +247,7 @@ class TransferEngine {
 
   void _onIncoming(IncomingPacket packet) {
     if (packet.kind == IncomingKind.text) {
+      if (packet.txtType == TxtType.cli) return;
       _events.add(
         TransferEvent(
           packet.text ?? '',

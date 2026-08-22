@@ -85,6 +85,7 @@ class IncomingPacket {
     this.rssi,
     this.hopCount,
     this.timestamp,
+    this.txtType = 0,
   });
 
   final IncomingKind kind;
@@ -99,6 +100,7 @@ class IncomingPacket {
   final int? rssi;
   final int? hopCount;
   final int? timestamp;
+  final int txtType;
 }
 
 abstract class PacketRadio {

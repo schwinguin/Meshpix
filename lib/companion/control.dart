@@ -1,6 +1,7 @@
-import '../models/contact.dart';
 import '../models/channel.dart';
+import '../models/contact.dart';
 import '../models/device.dart';
+import '../models/repeater.dart';
 
 class TxReceipt {
   const TxReceipt({
@@ -15,34 +16,115 @@ class TxReceipt {
 }
 
 class CompanionNotice {
+  CompanionNotice({
+    required this.kind,
+    this.contact,
+    this.ackCode,
+    this.rttMs,
+    this.statusSummary,
+    this.pubkey,
+    this.loginOk,
+    this.isAdmin,
+    this.permissions,
+    this.cliText,
+    this.repeaterStatus,
+    this.traceSummary,
+  });
+
   CompanionNotice.advert(this.contact)
       : kind = CompanionNoticeKind.advert,
         ackCode = null,
         rttMs = null,
         statusSummary = null,
-        pubkey = contact?.publicKey;
+        pubkey = contact?.publicKey,
+        loginOk = null,
+        isAdmin = null,
+        permissions = null,
+        cliText = null,
+        repeaterStatus = null,
+        traceSummary = null;
 
   CompanionNotice.ack({required int this.ackCode, required int this.rttMs})
       : kind = CompanionNoticeKind.ack,
         contact = null,
         statusSummary = null,
-        pubkey = null;
+        pubkey = null,
+        loginOk = null,
+        isAdmin = null,
+        permissions = null,
+        cliText = null,
+        repeaterStatus = null,
+        traceSummary = null;
 
   CompanionNotice.status({
     required List<int> prefix,
     required this.statusSummary,
+    this.repeaterStatus,
   })  : kind = CompanionNoticeKind.status,
         contact = null,
         ackCode = null,
         rttMs = null,
-        pubkey = prefix;
+        pubkey = prefix,
+        loginOk = null,
+        isAdmin = null,
+        permissions = null,
+        cliText = null,
+        traceSummary = null;
 
   CompanionNotice.pathUpdated(this.pubkey)
       : kind = CompanionNoticeKind.pathUpdated,
         contact = null,
         ackCode = null,
         rttMs = null,
-        statusSummary = null;
+        statusSummary = null,
+        loginOk = null,
+        isAdmin = null,
+        permissions = null,
+        cliText = null,
+        repeaterStatus = null,
+        traceSummary = null;
+
+  CompanionNotice.login({
+    required List<int> prefix,
+    required bool ok,
+    this.isAdmin,
+    this.permissions,
+  })  : kind = ok ? CompanionNoticeKind.login : CompanionNoticeKind.loginFail,
+        contact = null,
+        ackCode = null,
+        rttMs = null,
+        statusSummary = null,
+        pubkey = prefix,
+        loginOk = ok,
+        cliText = null,
+        repeaterStatus = null,
+        traceSummary = null;
+
+  CompanionNotice.cli({required List<int> prefix, required this.cliText})
+      : kind = CompanionNoticeKind.cli,
+        contact = null,
+        ackCode = null,
+        rttMs = null,
+        statusSummary = null,
+        pubkey = prefix,
+        loginOk = null,
+        isAdmin = null,
+        permissions = null,
+        repeaterStatus = null,
+        traceSummary = null;
+
+  CompanionNotice.trace({required this.traceSummary, List<int>? prefix})
+      : kind = CompanionNoticeKind.trace,
+        contact = null,
+        ackCode = null,
+        rttMs = null,
+        statusSummary = null,
+        pubkey = prefix,
+        loginOk = null,
+        isAdmin = null,
+        permissions = null,
+        cliText = null,
+        repeaterStatus = null;
 
   final CompanionNoticeKind kind;
   final MeshContact? contact;
@@ -50,9 +132,24 @@ class CompanionNotice {
   final int? rttMs;
   final String? statusSummary;
   final List<int>? pubkey;
+  final bool? loginOk;
+  final bool? isAdmin;
+  final int? permissions;
+  final String? cliText;
+  final RepeaterStatus? repeaterStatus;
+  final String? traceSummary;
 }
 
-enum CompanionNoticeKind { advert, ack, status, pathUpdated }
+enum CompanionNoticeKind {
+  advert,
+  ack,
+  status,
+  pathUpdated,
+  login,
+  loginFail,
+  cli,
+  trace,
+}
 
 /// Extra MeshCore-One-style actions on top of [PacketRadio].
 abstract class CompanionControl {
@@ -75,4 +172,10 @@ abstract class CompanionControl {
   Future<void> shareContactZeroHop(MeshContact contact);
   Future<void> resetPath(MeshContact contact);
   Future<void> refreshContacts();
+  Future<void> loginRepeater(MeshContact contact, String password);
+  Future<void> logoutRepeater(MeshContact contact);
+  Future<void> sendCli(MeshContact contact, String command);
+  Future<void> requestStatus(MeshContact contact);
+  Future<void> requestTelemetry(MeshContact contact);
+  Future<void> tracePath(MeshContact contact);
 }
