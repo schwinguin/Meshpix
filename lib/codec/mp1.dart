@@ -61,6 +61,23 @@ class DecodedImage {
   }
 }
 
+/// Local-only, full-quality render of an original (center-cropped square,
+/// never upscaled). The sender side always shows this, not the over-the-air
+/// quantized preview.
+DecodedImage fullResImage(RgbaImage source) {
+  final side = source.width < source.height ? source.width : source.height;
+  final sq = source.square(side);
+  return DecodedImage(
+    width: sq.width,
+    height: sq.height,
+    palette: mesh16,
+    indices: const [],
+    dithered: false,
+    upgradeChunks: 0,
+    argb: sq.toArgb(),
+  );
+}
+
 class PreviewPacket extends Mp1Packet {
   PreviewPacket({
     required super.transferId,

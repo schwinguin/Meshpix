@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../codec/mp1.dart';
-import '../codec/palettes.dart';
 import '../codec/rgba.dart';
 import '../companion/ble.dart';
 import '../companion/client.dart';
@@ -284,7 +283,7 @@ class AppController extends ChangeNotifier {
     );
     // The sender has the original — their own bubble shows it at full quality,
     // not the quantized preview that goes over the air.
-    final local = _fullResImage(source) ?? sent.preview.image;
+    final local = source != null ? fullResImage(source) : sent.preview.image;
     conv.messages.add(
       ChatMessage(
         id: 'out-${sent.transferId}',
@@ -297,22 +296,6 @@ class AppController extends ChangeNotifier {
       ),
     );
     notifyListeners();
-  }
-
-  /// Full-quality local render of the original (center-cropped square, no upscale).
-  DecodedImage? _fullResImage(RgbaImage? source) {
-    if (source == null) return null;
-    final side = source.width < source.height ? source.width : source.height;
-    final sq = source.square(side);
-    return DecodedImage(
-      width: sq.width,
-      height: sq.height,
-      palette: mesh16,
-      indices: const [],
-      dithered: false,
-      upgradeChunks: 0,
-      argb: sq.toArgb(),
-    );
   }
 
   Future<void> pull(ChatMessage msg) async {

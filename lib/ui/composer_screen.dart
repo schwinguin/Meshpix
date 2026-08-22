@@ -22,6 +22,7 @@ class _ComposerScreenState extends State<ComposerScreen> {
   bool _fourColor = true;
   bool _upgrade = false;
   EncodedTransfer? _encoded;
+  DecodedImage? _localPreview;
   String? _error;
   bool _busy = false;
   RgbaImage _source = makeTestCard(96);
@@ -55,6 +56,7 @@ class _ComposerScreenState extends State<ComposerScreen> {
       );
       setState(() {
         _encoded = encoded;
+        _localPreview = fullResImage(src);
         _busy = false;
       });
     } catch (e) {
@@ -92,9 +94,11 @@ class _ComposerScreenState extends State<ComposerScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (_encoded != null)
+          if (_localPreview != null)
             Center(
-              child: PixelPreview(image: _encoded!.preview.image, size: 196),
+              // Sender sieht sein eigenes Foto in voller Qualität, nicht die
+              // quantisierte Mesh-Preview, die der Empfänger bekommt.
+              child: PixelPreview(image: _localPreview!, size: 196),
             ),
           const SizedBox(height: 12),
           if (_encoded != null)

@@ -1,10 +1,7 @@
-import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:meshpix/codec/mp1.dart';
 import 'package:meshpix/codec/rgba.dart';
+import 'package:meshpix/models/chat.dart';
 import 'package:meshpix/state/app_controller.dart';
 
 /// Exakter App-Flow im Simulator: Anna schickt DM-Bild mit JPEG-Nachzug,
@@ -54,7 +51,8 @@ void main() {
     debugPrint('Pull um ${DateTime.now()} gestartet, warte auf das Foto …');
 
     // Sofort nach dem Tipp muss das UI den Pull anzeigen (kein toter Button).
-    final convBen = () => app.sessions['ben']!.conversations.firstWhere((c) => !c.isChannel);
+    Conversation convBen() =>
+        app.sessions['ben']!.conversations.firstWhere((c) => !c.isChannel);
     final pulledMsg = convBen().messages
         .firstWhere((m) => m.transferId == encoded.transferId);
     expect(pulledMsg.isPulling, isTrue,
