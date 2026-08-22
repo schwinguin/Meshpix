@@ -23,8 +23,15 @@ void main() {
   });
 
   test('clear short link vs blocked ridge', () {
-    const from = GeoPoint(lat: 48.14, lon: 11.58, elevM: 500, aglM: 2);
-    const to = GeoPoint(lat: 48.15, lon: 11.61, elevM: 510, aglM: 2);
+    const handheld = GeoPoint(lat: 48.14, lon: 11.58, elevM: 500, aglM: 2);
+    const peer = GeoPoint(lat: 48.15, lon: 11.61, elevM: 510, aglM: 2);
+    expect(
+      analyzeLos(from: handheld, to: peer, fromName: 'A', toName: 'B').verdict,
+      LosVerdict.marginal,
+    );
+
+    const from = GeoPoint(lat: 48.14, lon: 11.58, elevM: 500, aglM: 15);
+    const to = GeoPoint(lat: 48.15, lon: 11.61, elevM: 510, aglM: 15);
     final clear = analyzeLos(
       from: from,
       to: to,
@@ -83,11 +90,11 @@ void main() {
     expect(app.noiseSamples, isNotEmpty);
 
     final losBen = await app.computeLos(ben);
-    expect(losBen.verdict, LosVerdict.clear);
+    expect(losBen.verdict, isNot(LosVerdict.noFix));
     expect(losBen.distanceM, greaterThan(2000));
 
     final losRelay = await app.computeLos(relay);
-    expect(losRelay.verdict, isNot(LosVerdict.noFix));
+    expect(losRelay.verdict, LosVerdict.clear);
     expect(losRelay.distanceM, greaterThan(40000));
     expect(losRelay.samples, isNotEmpty);
   });

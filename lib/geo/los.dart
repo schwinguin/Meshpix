@@ -196,13 +196,21 @@ LosResult analyzeLos({
   );
 }
 
-/// Offline stand-in: interpolate known elevations and add gentle hills.
+/// Offline stand-in. A city-to-summit hop stays low until near the high end
+/// (a linear ramp would fake a 1000 m ridge in the middle of the plain).
 List<double> syntheticTerrain(GeoPoint from, GeoPoint to, {int count = 32}) {
-  final points = samplePath(from, to, count: count);
+  final n = count < 2 ? 2 : count;
   final distKm = haversineM(from, to) / 1000;
+  final delta = to.elevM - from.elevM;
   return [
-    for (var i = 0; i < points.length; i++)
-      points[i].elevM +
-          18 * sin(pi * i / (points.length - 1)) * (distKm > 8 ? 1.6 : 0.4),
+    for (var i = 0; i < n; i++)
+      _shapedElev(from.elevM, delta, i / (n - 1)) +
+          (distKm < 10 ? 0.0 : 10 * sin(pi * i / (n - 1))),
   ];
+}
+
+double _shapedElev(double start, double delta, double t) {
+  if (delta.abs() < 80) return start + delta * t;
+  if (delta > 0) return start + delta * t * t * t;
+  return start + delta * (1 - (1 - t) * (1 - t) * (1 - t));
 }
