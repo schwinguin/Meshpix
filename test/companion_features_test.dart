@@ -234,4 +234,41 @@ void main() {
     expect(ok?.loginOk, isTrue);
     expect(ok?.isAdmin, isTrue);
   });
+
+  test('channel creation uses first free slot and appears in chats', () async {
+    final app = AppController();
+    addTearDown(app.dispose);
+    final anna = app.sessions['anna']!;
+    expect(anna.companion!.channels, hasLength(1)); // nur Public
+
+    await app.createChannel('Wald');
+    final ch = anna.companion!.channels.firstWhere((c) => c.name == 'Wald');
+    expect(ch.index, 1);
+    expect(ch.secret, hasLength(16));
+    expect(
+      anna.conversations.any((c) => c.isChannel && c.channelIdx == 1),
+      isTrue,
+    );
+
+    await app.createChannel('Tal');
+    expect(
+      anna.companion!.channels.firstWhere((c) => c.name == 'Tal').index,
+      2,
+    );
+  });
+
+  test('createChannel refuses when all private slots are used', () async {
+    final app = AppController();
+    addTearDown(app.dispose);
+    final anna = app.sessions['anna']!;
+    for (var i = 1; i <= 7; i++) {
+      await anna.companion!.setChannel(i, 'K$i', Uint8List(16));
+    }
+    await app.createChannel('Noch einer');
+    expect(app.error, contains('Kein freier Kanalslot'));
+    expect(
+      anna.companion!.channels.any((c) => c.name == 'Noch einer'),
+      isFalse,
+    );
+  });
 }

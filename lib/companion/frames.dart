@@ -41,6 +41,16 @@ Uint8List cmdGetContacts({int? since}) {
 
 Uint8List cmdGetChannel(int idx) => Uint8List.fromList([Cmd.getChannel, idx]);
 
+/// Kanal anlegen/aktualisieren: `[0x20, idx, name (32B), secret (16B)]`.
+/// Index 0 = Public (Secret null), 1–7 = private Kanäle.
+Uint8List cmdSetChannel(int idx, String name, Uint8List secret) =>
+    Uint8List.fromList([
+      Cmd.setChannel,
+      idx,
+      ..._pad(utf8.encode(name), 32),
+      ..._pad(secret, 16),
+    ]);
+
 Uint8List cmdSyncNextMessage() => Uint8List.fromList([Cmd.syncNextMessage]);
 
 Uint8List cmdSetDeviceTime(int epochSecs) =>

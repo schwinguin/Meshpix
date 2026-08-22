@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/channel.dart';
 import '../models/chat.dart';
 import '../state/app_controller.dart';
 import 'composer_screen.dart';
@@ -32,6 +33,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (conv == null) {
       return const Scaffold(body: Center(child: Text('Kein Chat')));
     }
+    final channels = app.active.companion?.channels ?? const <MeshChannel>[];
+    final ch = conv.isChannel
+        ? channels.where((c) => c.index == conv.channelIdx).firstOrNull
+        : null;
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -40,7 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Text(conv.title),
             Text(
               conv.isChannel
-                  ? 'Channel · Flood ohne ACK'
+                  ? 'Channel · ${ch?.secret != null ? 'Privat' : 'Flood ohne ACK'}'
                   : 'Direct · Nachzug möglich',
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -82,9 +87,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Flood hat keine Empfangsbestätigung. Wer off-grid war, bekommt die Nachricht per DM nachgereicht, sobald er wieder wirbt.',
+                        ch?.secret != null
+                            ? 'Privater Kanal: nur Knoten mit dem Secret-Key können mitlesen.'
+                            : 'Flood hat keine Empfangsbestätigung. Wer off-grid war, bekommt die Nachricht per DM nachgereicht, sobald er wieder wirbt.',
                         style: TextStyle(fontSize: 12, color: meshPaper),
                       ),
                     ),

@@ -288,6 +288,18 @@ class SimRadio implements PacketRadio, CompanionControl {
   }
 
   @override
+  Future<void> setChannel(int idx, String name, Uint8List secret) async {
+    channels.removeWhere((c) => c.index == idx);
+    channels.add(
+      MeshChannel(
+        index: idx,
+        name: name,
+        secret: List<int>.of(secret),
+      ),
+    );
+  }
+
+  @override
   Future<void> applyRadio(RadioSettings settings) async {
     radio = settings;
   }

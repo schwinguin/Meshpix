@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+
 
 import 'package:flutter/foundation.dart';
 
@@ -183,6 +185,8 @@ class AppController extends ChangeNotifier {
   }) {
     final convos = <Conversation>[];
     for (final ch in channels) {
+      // Leere Slots (nie angelegt/beigetreten) haben keinen Chat.
+      if (ch.index != 0 && ch.name.isEmpty) continue;
       convos.add(
         Conversation(
           id: '$idPrefix-ch${ch.index}',
@@ -508,6 +512,67 @@ class AppController extends ChangeNotifier {
     await companion?.setAdvertName(trimmed);
     active.name = trimmed;
     status = 'Name: $trimmed';
+    notifyListeners();
+  }
+
+  /// Kanal auf dem Gerät anlegen: erster freier Slot 1–7, neues 16-Byte-Secret.
+  Future<void> createChannel(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final control = companion;
+    if (control == null) return;
+    final used = control.channels
+        .where((c) => c.index == 0 || c.name.isNotEmpty)
+        .map((c) => c.index)
+        .toSet();
+    int? free;
+    for (var i = 1; i <= 7; i++) {
+      if (!used.contains(i)) {
+        free = i;
+        break;
+      }
+    }
+    if (free == null) {
+      error = 'Kein freier Kanalslot: 1–7 sind belegt.';
+      notifyListeners();
+      return;
+    }
+    status = 'Lege Kanal „$trimmed" an …';
+    notifyListeners();
+    final rnd = Random.secure();
+    final secret = Uint8List(16);
+    for (var i = 0; i < secret.length; i++) {
+      secret[i] = rnd.nextInt(256);
+    }
+    try {
+      await control.setChannel(free, trimmed, secret);
+    } catch (e) {
+      error = 'Kanal konnte nicht angelegt werden: $e';
+      notifyListeners();
+      return;
+    }
+    final session = active;
+    if (!session.conversations.any((c) => c.isChannel && c.channelIdx == free)) {
+      var i = 0;
+      while (
+        i < session.conversations.length &&
+        session.conversations[i].isChannel &&
+        (session.conversations[i].channelIdx ?? 0) < free
+      ) {
+        i++;
+      }
+      session.conversations.insert(
+        i,
+        Conversation(
+          id: '${session.id}-ch$free',
+          title: trimmed,
+          isChannel: true,
+          channelIdx: free,
+        ),
+      );
+    }
+    error = null;
+    status = 'Kanal „$trimmed" angelegt (Kanal $free)';
     notifyListeners();
   }
 

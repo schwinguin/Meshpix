@@ -299,7 +299,9 @@ MeshChannel _parseChannel(Uint8List d) {
   }
   return MeshChannel(
     index: idx,
-    name: name.isEmpty ? (idx == 0 ? 'Public' : 'Channel $idx') : name,
+    // Unbenannte Slots existieren nicht (nie angelegt/beigetreten) —
+    // der Parser erfindet für sie keinen Namen.
+    name: name.isEmpty ? (idx == 0 ? 'Public' : '') : name,
     // Kanal 0 ist per Definition öffentlich — Secret ignorieren.
     secret: idx == 0 ? null : secret,
   );

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -55,5 +56,29 @@ void main() {
     ]);
     final parsed = parseCompanionFrame(frame, meshPixDataType: kMeshPixDataType);
     expect(parsed?.incoming?.kind.toString(), contains('meshPix'));
+  });
+
+  test('set channel frame encodes cmd, idx, padded name, secret', () {
+    final secret = Uint8List.fromList(List<int>.generate(16, (i) => i + 1));
+    final frame = cmdSetChannel(3, 'Wald', secret);
+    expect(frame[0], Cmd.setChannel);
+    expect(frame[1], 3);
+    expect(frame.length, 2 + 32 + 16);
+    expect(utf8.decode(frame.sublist(2, 6)), 'Wald');
+    expect(frame[6], 0); // null-gepadet
+    expect(frame.sublist(34), secret);
+  });
+
+  test('channel info without name stays unnamed (empty slot)', () {
+    final d = Uint8List(51);
+    d[0] = Resp.channelInfo;
+    d[1] = 5; // idx
+    // Name (Bytes 2..33) leer, Secret (34..49) vorgeneriert.
+    d.setRange(34, 50, List<int>.generate(16, (i) => i));
+    final parsed = parseCompanionFrame(d, meshPixDataType: kMeshPixDataType);
+    expect(parsed?.channel, isNotNull);
+    expect(parsed!.channel!.index, 5);
+    expect(parsed.channel!.name, '');
+    expect(parsed.channel!.secret, isNotNull);
   });
 }

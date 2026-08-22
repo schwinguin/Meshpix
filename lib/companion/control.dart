@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/channel.dart';
 import '../models/contact.dart';
 import '../models/device.dart';
@@ -178,4 +180,5 @@ abstract class CompanionControl {
   Future<void> requestStatus(MeshContact contact);
   Future<void> requestTelemetry(MeshContact contact);
   Future<void> tracePath(MeshContact contact);
+  Future<void> setChannel(int idx, String name, Uint8List secret);
 }
