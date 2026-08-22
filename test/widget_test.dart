@@ -7,10 +7,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('MeshPix'), findsOneWidget);
     expect(find.text('Simulator'), findsOneWidget);
-    expect(find.text('Public'), findsOneWidget);
     expect(find.text('Ben'), findsWidgets);
     expect(find.text('Chats'), findsOneWidget);
-    expect(find.text('Kontakte'), findsOneWidget);
+    expect(find.text('Kanäle'), findsOneWidget);
+    expect(find.text('Knoten'), findsOneWidget);
     expect(find.text('Funk'), findsOneWidget);
     expect(find.text('Pfad'), findsOneWidget);
   });

@@ -206,8 +206,11 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 40));
     expect(session.neighbors, isNotEmpty);
 
-    final chat = app.sessions['anna']!.conversations.firstWhere((c) => c.title == 'Relay1');
-    expect(chat.messages, isEmpty, reason: 'CLI darf nicht in den Chat');
+    expect(
+      app.sessions['anna']!.conversations.any((c) => c.title == 'Relay1'),
+      isFalse,
+      reason: 'CLI darf nicht in den Chat',
+    );
   });
 
   test('login and CLI frames encode', () {

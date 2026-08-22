@@ -300,7 +300,8 @@ MeshChannel _parseChannel(Uint8List d) {
   return MeshChannel(
     index: idx,
     name: name.isEmpty ? (idx == 0 ? 'Public' : 'Channel $idx') : name,
-    secret: secret,
+    // Kanal 0 ist per Definition öffentlich — Secret ignorieren.
+    secret: idx == 0 ? null : secret,
   );
 }
 

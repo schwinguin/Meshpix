@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../state/app_controller.dart';
 import 'chat_screen.dart';
+import 'channels_screen.dart';
 import 'contacts_screen.dart';
 import 'format.dart';
 import 'path_screen.dart';
@@ -111,9 +112,14 @@ class HomeScreen extends StatelessWidget {
                   label: 'Chats',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.people_outline),
-                  selectedIcon: Icon(Icons.people),
-                  label: 'Kontakte',
+                  icon: Icon(Icons.campaign_outlined),
+                  selectedIcon: Icon(Icons.campaign),
+                  label: 'Kanäle',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.hub_outlined),
+                  selectedIcon: Icon(Icons.hub),
+                  label: 'Knoten',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.settings_input_antenna),
@@ -133,10 +139,12 @@ class HomeScreen extends StatelessWidget {
   Widget _tabBody(AppController app) {
     switch (app.homeTab) {
       case 1:
-        return const ContactsPane();
+        return const ChannelsPane();
       case 2:
-        return const RadioPane();
+        return const ContactsPane();
       case 3:
+        return const RadioPane();
+      case 4:
         return const PathPane();
       default:
         return _ConvoList(app: app);
@@ -176,7 +184,10 @@ class _ConvoList extends StatelessWidget {
     if (app.sessions.isEmpty) {
       return const Center(child: Text('Kein Mesh verbunden'));
     }
-    final convos = [...app.active.conversations]
+    // Nur echte DMs: Kanäle leben im Kanäle-Tab, Repeater im Knoten-Tab.
+    final convos = app.active.conversations
+        .where((c) => !c.isChannel)
+        .toList()
       ..sort((a, b) {
         final at = a.lastMessage?.timestamp;
         final bt = b.lastMessage?.timestamp;
@@ -185,23 +196,21 @@ class _ConvoList extends StatelessWidget {
         if (bt == null) return -1;
         return bt.compareTo(at);
       });
+    if (convos.isEmpty) {
+      return const Center(
+        child: Text('Noch keine Chats — unter „Knoten" einen antippen'),
+      );
+    }
     return ListView(
       children: [
         for (final c in convos)
           ListTile(
             leading: Icon(
-              c.isChannel ? Icons.campaign_outlined : Icons.person_outline,
+              Icons.person_outline,
               color: c.favourite ? meshAmber : meshTeal,
             ),
             title: Text(c.title),
-            subtitle: Text(
-              c.preview ??
-                  (c.isChannel
-                      ? (c.hasPendingCatchUp
-                          ? 'Channel · Nachreichen offen'
-                          : 'Channel · Flood ohne ACK')
-                      : 'Direct Message'),
-            ),
+            subtitle: Text(c.preview ?? 'Direct Message'),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,

@@ -203,6 +203,8 @@ class AppController extends ChangeNotifier {
       );
     }
     for (final c in contacts) {
+      // Repeater & Co. sind Infrastruktur: kein Chat, keine Konversation.
+      if (!c.isChat) continue;
       convos.add(_convoForContact(idPrefix, c));
     }
     return convos;
@@ -537,7 +539,7 @@ class AppController extends ChangeNotifier {
   }
 
   void showPath({MeshContact? focus}) {
-    homeTab = 3;
+    homeTab = 4;
     pathFocusKey = focus?.keyHex;
     notifyListeners();
   }
