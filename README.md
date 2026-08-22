@@ -15,19 +15,35 @@ Ein MeshCore-Channel-Datagramm hat **163 Byte** Nutzlast. Ein Handyfoto passt ni
 
 ## Simulator ohne Funkgerät
 
-Die App startet im **Simulator** mit zwei Identitäten (Anna und Ben). So lassen sich Codec, Chat und Nachzug ohne LoRa-Node testen.
+Die App startet im **Simulator** mit zwei Identitäten (Anna und Ben). So lassen sich Codec, Chat, Delivery-Status, Advert und Nachzug ohne LoRa-Node testen.
 
 Bluetooth koppelt an einen echten MeshCore-Companion (Nordic UART, Prefix z. B. `MeshCore-`, `HT-`).
+
+## MeshCore-One-Features
+
+Neben Bildern spricht MeshPix dasselbe Companion-Protokoll wie MeshCore One:
+
+- **Chats / Kontakte / Funk** als Tabs
+- Direct Messages mit **Sending → Sent → Delivered** (ACK + RTT)
+- Hop-Anzahl und SNR an der Blase
+- Kontakte mit Typ (Chat, Repeater, Room, Sensor), Favorit, zuletzt gehört, Pfad
+- **Zero-Hop- / Flood-Advert**, Auto-Discovery
+- **Ping / Status** an einen Kontakt
+- Radio: Frequenz, SF, BW, CR, TX-Power + regionale **Presets** (EU/US/AU/UK)
+- Batterie, Firmware, Advert-Name
+- Kontaktkarte als **QR / `meshcore://contact/add?...`** (kompatibel mit MeshCore One)
 
 ## Protokoll (Companion-Subset)
 
 Handshake und Traffic folgen der [Companion Radio Protocol](https://docs.meshcore.io/companion_protocol/)-Doku:
 
-- `CMD_DEVICE_QUERY`, `CMD_APP_START`
-- Kontakte / Channels laden
+- `CMD_DEVICE_QUERY`, `CMD_APP_START`, `CMD_SET_DEVICE_TIME`
+- Kontakte / Channels laden, `PUSH_CODE_ADVERT` / `NEW_ADVERT`
 - Text: `CMD_SEND_TXT_MSG`, `CMD_SEND_CHANNEL_TXT_MSG`
+- Delivery: `RESP_CODE_SENT`, `PUSH_CODE_SEND_CONFIRMED`
 - Bilder Channel: `CMD_SEND_CHANNEL_DATA` (`0x3E`)
 - Bilder DM: `CMD_SEND_RAW_DATA` (`0x19`)
+- Funk: `CMD_SET_RADIO_PARAMS`, `CMD_SET_RADIO_TX_POWER`, `CMD_GET_BATT_AND_STORAGE`
 - Empfang: `RESP_CODE_CHANNEL_DATA_RECV`, `PUSH_CODE_RAW_DATA`, Message-Sync
 
 Unbekannte `data_type`-Werte werden ignoriert.
@@ -66,4 +82,4 @@ Signing, Provisioning und Play/App-Store-Release sind nicht Teil dieses MVP.
 
 ## Limits (bewusst)
 
-Keine Karte, kein Repeater-Login, kein Firmware-Flash, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion.
+Keine Offline-Karte, kein Repeater-Admin-Login, kein Firmware-Flash, keine Line-of-Sight / Noise-Floor-Charts, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion.

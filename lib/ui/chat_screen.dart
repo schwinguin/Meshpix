@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/chat.dart';
 import '../state/app_controller.dart';
 import 'composer_screen.dart';
+import 'contact_detail.dart';
+import 'format.dart';
 import 'theme.dart';
 import 'widgets/pixel_preview.dart';
 
@@ -37,11 +39,37 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Text(conv.title),
             Text(
-              conv.isChannel ? 'Channel · nur Preview' : 'Direct · Nachzug möglich',
+              conv.isChannel ? 'Channel · Preview + Text' : 'Direct · Nachzug möglich',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
+        actions: [
+          if (!conv.isChannel)
+            IconButton(
+              tooltip: 'Kontakt',
+              onPressed: () {
+                final key = conv.peerKey;
+                if (key == null) return;
+                for (final c in app.contacts) {
+                  if (c.publicKey.length >= 6 &&
+                      key.length >= 6 &&
+                      c.publicKey[0] == key[0] &&
+                      c.publicKey[1] == key[1] &&
+                      c.publicKey[2] == key[2]) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => ContactDetailScreen(contact: c),
+                      ),
+                    );
+                    return;
+                  }
+                }
+              },
+              icon: const Icon(Icons.info_outline),
+            ),
+        ],
       ),
       body: Column(
         children: [
@@ -131,10 +159,27 @@ class _Bubble extends StatelessWidget {
           children: [
             if (message.image != null)
               PixelPreview(image: message.image!, size: 132),
+            if (message.senderName != null && !message.outgoing)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  message.senderName!,
+                  style: const TextStyle(color: meshAmber, fontSize: 12),
+                ),
+              ),
             if (message.text != null && message.text!.isNotEmpty) ...[
               if (message.image != null) const SizedBox(height: 8),
               Text(message.text!),
             ],
+            const SizedBox(height: 4),
+            Text(
+              [
+                formatTime(message.timestamp),
+                if (message.outgoing) deliveryLabel(message),
+                formatHops(hopCount: message.hopCount, snr: message.snr),
+              ].where((s) => s.isNotEmpty).join(' · '),
+              style: const TextStyle(fontSize: 11, color: meshPaper),
+            ),
             if (message.isPulling) ...[
               const SizedBox(height: 8),
               ClipRRect(

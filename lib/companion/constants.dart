@@ -23,10 +23,30 @@ class Cmd {
   static const sendTxtMsg = 0x02;
   static const sendChannelTxtMsg = 0x03;
   static const getContacts = 0x04;
+  static const getDeviceTime = 0x05;
+  static const setDeviceTime = 0x06;
+  static const sendSelfAdvert = 0x07;
+  static const setAdvertName = 0x08;
+  static const addUpdateContact = 0x09;
   static const syncNextMessage = 0x0A;
+  static const setRadioParams = 0x0B;
+  static const setRadioTxPower = 0x0C;
+  static const resetPath = 0x0D;
+  static const setAdvertLatLon = 0x0E;
+  static const removeContact = 0x0F;
+  static const shareContact = 0x10;
+  static const exportContact = 0x11;
+  static const importContact = 0x12;
+  static const reboot = 0x13;
+  static const getBattAndStorage = 0x14;
   static const deviceQuery = 0x16;
   static const sendRawData = 0x19;
+  static const sendLogin = 0x1A;
+  static const sendStatusReq = 0x1B;
   static const getChannel = 0x1F;
+  static const setChannel = 0x20;
+  static const sendTracePath = 0x24;
+  static const sendTelemetryReq = 0x27;
   static const sendChannelData = 0x3E;
 }
 
@@ -40,19 +60,30 @@ class Resp {
   static const msgSent = 0x06;
   static const contactMsgRecv = 0x07;
   static const channelMsgRecv = 0x08;
+  static const currTime = 0x09;
   static const noMoreMsgs = 0x0A;
+  static const exportContact = 0x0B;
+  static const battAndStorage = 0x0C;
   static const deviceInfo = 0x0D;
   static const contactMsgRecvV3 = 0x10;
   static const channelMsgRecvV3 = 0x11;
   static const channelInfo = 0x12;
   static const channelDataRecv = 0x1B;
-  static const rawData = 0x84;
+  static const advert = 0x80;
+  static const pathUpdated = 0x81;
+  static const sendConfirmed = 0x82;
   static const msgWaiting = 0x83;
+  static const rawData = 0x84;
+  static const loginSuccess = 0x85;
+  static const loginFail = 0x86;
+  static const statusResponse = 0x87;
+  static const traceData = 0x89;
+  static const newAdvert = 0x8A;
+  static const telemetryResponse = 0x8B;
 }
 
-class AdvType {
-  static const none = 0;
-  static const chat = 1;
-  static const repeater = 2;
-  static const room = 3;
+class TxtType {
+  static const plain = 0;
+  static const cli = 1;
+  static const signedPlain = 2;
 }

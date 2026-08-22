@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../codec/limits.dart';
 import '../codec/mp1.dart';
+import '../companion/control.dart';
 import 'protocol.dart';
 
 class TransferEvent {
@@ -19,6 +20,10 @@ class TransferEvent {
     this.isText = false,
     this.chunkReceived,
     this.chunkTotal,
+    this.hopCount,
+    this.snr,
+    this.timestamp,
+    this.receipt,
   });
   final String message;
   final DecodedImage? image;
@@ -31,6 +36,10 @@ class TransferEvent {
   final bool isText;
   final int? chunkReceived;
   final int? chunkTotal;
+  final int? hopCount;
+  final double? snr;
+  final int? timestamp;
+  final TxReceipt? receipt;
 }
 
 class _Offer {
@@ -148,14 +157,17 @@ class TransferEngine {
     return encoded;
   }
 
-  Future<void> sendText(RadioDestination destination, String text) async {
+  Future<TxReceipt?> sendText(RadioDestination destination, String text) {
+    final done = Completer<TxReceipt?>();
     _enqueue(
       QueuedTx(
         priority: TxPriority.text,
         payload: Uint8List.fromList(utf8.encode(text)),
         destination: destination,
+        done: done,
       ),
     );
+    return done.future;
   }
 
   Future<void> requestUpgrade(int transferId, RadioDestination from) async {
@@ -193,23 +205,40 @@ class TransferEngine {
     try {
       while (_queue.isNotEmpty) {
         final next = _queue.removeAt(0);
-        if (next.priority == TxPriority.text) {
-          await radio.sendText(
-            destination: next.destination,
-            text: utf8.decode(next.payload),
-          );
-        } else {
-          if (next.payload.length > maxPayload) {
-            continue;
+        try {
+          if (next.priority == TxPriority.text) {
+            final receipt = await radio.sendText(
+              destination: next.destination,
+              text: utf8.decode(next.payload),
+            );
+            if (!(next.done?.isCompleted ?? true)) {
+              next.done!.complete(receipt);
+            }
+          } else {
+            if (next.payload.length > maxPayload) {
+              continue;
+            }
+            await radio.sendDatagram(
+              destination: next.destination,
+              dataType: kMeshPixDataType,
+              payload: next.payload,
+            );
           }
-          await radio.sendDatagram(
-            destination: next.destination,
-            dataType: kMeshPixDataType,
-            payload: next.payload,
-          );
+        } catch (e) {
+          if (!(next.done?.isCompleted ?? true)) {
+            next.done!.completeError(e);
+          }
+          rethrow;
         }
         await Future<void>.delayed(budget.waitAfter(next.payload.length));
       }
+    } catch (e) {
+      for (final q in _queue) {
+        if (!(q.done?.isCompleted ?? true)) {
+          q.done!.completeError(e);
+        }
+      }
+      rethrow;
     } finally {
       _pumping = false;
     }
@@ -225,6 +254,9 @@ class TransferEngine {
           fromChannel: packet.fromChannel,
           channelIdx: packet.channelIdx,
           senderPrefix: packet.senderPrefix,
+          hopCount: packet.hopCount,
+          snr: packet.snr,
+          timestamp: packet.timestamp,
         ),
       );
       return;

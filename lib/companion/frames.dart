@@ -1,10 +1,21 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../models/contact.dart';
+import '../models/device.dart';
 import 'constants.dart';
 
 Uint8List _u32(int v) =>
     Uint8List.fromList([v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF]);
+
+Uint8List _i32(int v) => _u32(v);
+
+Uint8List _pad(List<int> src, int len) {
+  final out = Uint8List(len);
+  final n = src.length < len ? src.length : len;
+  out.setRange(0, n, src);
+  return out;
+}
 
 Uint8List cmdDeviceQuery({int appTargetVer = 8}) =>
     Uint8List.fromList([Cmd.deviceQuery, appTargetVer]);
@@ -23,11 +34,80 @@ Uint8List cmdAppStart({String appName = 'MeshPix', int appVer = 1}) {
   ]);
 }
 
-Uint8List cmdGetContacts() => Uint8List.fromList([Cmd.getContacts]);
+Uint8List cmdGetContacts({int? since}) {
+  if (since == null) return Uint8List.fromList([Cmd.getContacts]);
+  return Uint8List.fromList([Cmd.getContacts, ..._u32(since)]);
+}
 
 Uint8List cmdGetChannel(int idx) => Uint8List.fromList([Cmd.getChannel, idx]);
 
 Uint8List cmdSyncNextMessage() => Uint8List.fromList([Cmd.syncNextMessage]);
+
+Uint8List cmdSetDeviceTime(int epochSecs) =>
+    Uint8List.fromList([Cmd.setDeviceTime, ..._u32(epochSecs)]);
+
+Uint8List cmdSendSelfAdvert({bool flood = false}) =>
+    Uint8List.fromList([Cmd.sendSelfAdvert, flood ? 1 : 0]);
+
+Uint8List cmdSetAdvertName(String name) =>
+    Uint8List.fromList([Cmd.setAdvertName, ...utf8.encode(name)]);
+
+Uint8List cmdGetBattAndStorage() => Uint8List.fromList([Cmd.getBattAndStorage]);
+
+Uint8List cmdSetRadioParams(RadioSettings s) => Uint8List.fromList([
+      Cmd.setRadioParams,
+      ..._u32(s.freqWire),
+      ..._u32(s.bwWire),
+      s.spreadingFactor,
+      s.codingRate,
+      s.repeatMode ? 1 : 0,
+    ]);
+
+Uint8List cmdSetRadioTxPower(int dbm) =>
+    Uint8List.fromList([Cmd.setRadioTxPower, dbm & 0xFF]);
+
+Uint8List cmdAddUpdateContact(MeshContact c) {
+  final path = _pad(c.outPath ?? const [], 64);
+  final name = _pad(utf8.encode(c.name), 32);
+  final lat = ((c.lat ?? 0) * 1e6).round();
+  final lon = ((c.lon ?? 0) * 1e6).round();
+  final pathLen = c.hasPath ? c.outPath!.length : 0;
+  return Uint8List.fromList([
+    Cmd.addUpdateContact,
+    ..._pad(c.publicKey, 32),
+    c.type,
+    c.flags,
+    pathLen,
+    ...path,
+    ...name,
+    ..._u32(c.lastAdvert ?? 0),
+    ..._i32(lat),
+    ..._i32(lon),
+  ]);
+}
+
+Uint8List cmdRemoveContact(List<int> publicKey) =>
+    Uint8List.fromList([Cmd.removeContact, ..._pad(publicKey, 32)]);
+
+Uint8List cmdShareContact(List<int> publicKey) =>
+    Uint8List.fromList([Cmd.shareContact, ..._pad(publicKey, 32)]);
+
+Uint8List cmdResetPath(List<int> publicKey) =>
+    Uint8List.fromList([Cmd.resetPath, ..._pad(publicKey, 32)]);
+
+Uint8List cmdSendStatusReq(List<int> publicKey) =>
+    Uint8List.fromList([Cmd.sendStatusReq, ..._pad(publicKey, 32)]);
+
+Uint8List cmdSendTelemetryReq(List<int> publicKey) =>
+    Uint8List.fromList([Cmd.sendTelemetryReq, 0, 0, 0, ..._pad(publicKey, 32)]);
+
+Uint8List cmdExportContact([List<int>? publicKey]) {
+  if (publicKey == null) return Uint8List.fromList([Cmd.exportContact]);
+  return Uint8List.fromList([Cmd.exportContact, ..._pad(publicKey, 32)]);
+}
+
+Uint8List cmdImportContact(Uint8List card) =>
+    Uint8List.fromList([Cmd.importContact, ...card]);
 
 Uint8List cmdSendTxtMsg({
   required Uint8List pubkeyPrefix,
@@ -40,7 +120,7 @@ Uint8List cmdSendTxtMsg({
   prefix.setRange(0, n, pubkeyPrefix);
   return Uint8List.fromList([
     Cmd.sendTxtMsg,
-    0, // plain
+    TxtType.plain,
     attempt,
     ..._u32(timestamp),
     ...prefix,
@@ -55,7 +135,7 @@ Uint8List cmdSendChannelTxtMsg({
 }) {
   return Uint8List.fromList([
     Cmd.sendChannelTxtMsg,
-    0,
+    TxtType.plain,
     channelIdx,
     ..._u32(timestamp),
     ...utf8.encode(text),
@@ -93,6 +173,11 @@ Uint8List cmdSendRawData({
 
 int readU32(Uint8List d, int o) =>
     d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24);
+
+int readI32(Uint8List d, int o) {
+  final u = readU32(d, o);
+  return u > 0x7FFFFFFF ? u - 0x100000000 : u;
+}
 
 int readU16(Uint8List d, int o) => d[o] | (d[o + 1] << 8);
 

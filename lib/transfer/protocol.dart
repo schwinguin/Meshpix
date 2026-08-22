@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:typed_data';
+
+import '../companion/control.dart';
 
 /// Estimated airtime and the mandatory silence after a transmit.
 class AirtimeBudget {
@@ -37,11 +40,13 @@ class QueuedTx {
     required this.priority,
     required this.payload,
     required this.destination,
+    this.done,
   });
 
   final TxPriority priority;
   final Uint8List payload;
   final RadioDestination destination;
+  final Completer<TxReceipt?>? done;
 }
 
 enum DestKind { channelFlood, directDm }
@@ -77,6 +82,9 @@ class IncomingPacket {
     this.payload,
     this.flooded = false,
     this.snr,
+    this.rssi,
+    this.hopCount,
+    this.timestamp,
   });
 
   final IncomingKind kind;
@@ -88,11 +96,14 @@ class IncomingPacket {
   final Uint8List? payload;
   final bool flooded;
   final double? snr;
+  final int? rssi;
+  final int? hopCount;
+  final int? timestamp;
 }
 
 abstract class PacketRadio {
   Stream<IncomingPacket> get incoming;
-  Future<void> sendText({
+  Future<TxReceipt?> sendText({
     required RadioDestination destination,
     required String text,
   });

@@ -19,8 +19,8 @@ void main() {
       mesh: mesh,
       identity: SimIdentity(id: 'ben', name: 'Ben', publicKey: keyFromSeed(23)),
     );
-    anna.refreshContacts();
-    ben.refreshContacts();
+    anna.loadPeers();
+    ben.loadPeers();
 
     final codec = Mp1Codec();
     final annaEngine = TransferEngine(

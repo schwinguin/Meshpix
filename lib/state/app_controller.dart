@@ -6,7 +6,12 @@ import '../codec/mp1.dart';
 import '../codec/rgba.dart';
 import '../companion/ble.dart';
 import '../companion/client.dart';
+import '../companion/control.dart';
+import '../models/channel.dart';
 import '../models/chat.dart';
+import '../models/contact.dart';
+import '../models/device.dart';
+import '../models/uri_card.dart';
 import '../sim/sim_mesh.dart';
 import '../transfer/engine.dart';
 import '../transfer/protocol.dart';
@@ -22,12 +27,16 @@ class NodeSession {
     required this.conversations,
   });
 
-  final String id;
-  final String name;
+  String id;
+  String name;
   final PacketRadio radio;
   final TransferEngine engine;
   final List<Conversation> conversations;
   StreamSubscription<TransferEvent>? sub;
+  StreamSubscription<CompanionNotice>? noticeSub;
+
+  CompanionControl? get companion =>
+      radio is CompanionControl ? radio as CompanionControl : null;
 }
 
 class AppController extends ChangeNotifier {
@@ -45,6 +54,7 @@ class AppController extends ChangeNotifier {
   final sessions = <String, NodeSession>{};
   final bleHits = <BleScanHit>[];
   bool scanning = false;
+  int homeTab = 0;
 
   CompanionClient? _bleClient;
   BleTransport? _bleTransport;
@@ -55,6 +65,24 @@ class AppController extends ChangeNotifier {
 
   Conversation? _open;
   Conversation? get openConversation => _open;
+
+  CompanionControl? get companion =>
+      sessions[activeNodeId]?.companion ?? _bleClient;
+
+  List<MeshContact> get contacts => companion?.contacts ?? const [];
+
+  DeviceSelf? get self => companion?.self;
+
+  RadioSettings? get radioSettings => companion?.radio;
+
+  BatteryInfo? get battery => companion?.battery;
+
+  FirmwareInfo? get firmware => companion?.firmware;
+
+  void selectTab(int index) {
+    homeTab = index;
+    notifyListeners();
+  }
 
   void _bootSimulator() {
     _disposeSessions();
@@ -71,8 +99,8 @@ class AppController extends ChangeNotifier {
     );
     final annaRadio = SimRadio(mesh: mesh, identity: anna);
     final benRadio = SimRadio(mesh: mesh, identity: ben);
-    annaRadio.refreshContacts();
-    benRadio.refreshContacts();
+    annaRadio.loadPeers();
+    benRadio.loadPeers();
     sessions['anna'] = _sessionForSim(annaRadio);
     sessions['ben'] = _sessionForSim(benRadio);
     activeNodeId = 'anna';
@@ -87,33 +115,63 @@ class AppController extends ChangeNotifier {
       codec: codec,
       budget: AirtimeBudget(airtimeFactor: 0.25, bitsPerSecond: 2400),
     );
-    final convos = <Conversation>[
-      Conversation(
-        id: '${radio.identity.id}-ch0',
-        title: 'Public',
-        isChannel: true,
-        channelIdx: 0,
-      ),
-    ];
-    for (final c in radio.contacts) {
-      convos.add(
-        Conversation(
-          id: '${radio.identity.id}-${c.name}',
-          title: c.name,
-          isChannel: false,
-          peerKey: Uint8List.fromList(c.publicKey),
-        ),
-      );
-    }
     final session = NodeSession(
       id: radio.identity.id,
       name: radio.identity.name,
       radio: radio,
       engine: engine,
-      conversations: convos,
+      conversations: _convosFrom(
+        idPrefix: radio.identity.id,
+        channels: radio.channels,
+        contacts: radio.contacts,
+      ),
     );
     session.sub = engine.events.listen((e) => _onEvent(session, e));
+    session.noticeSub = radio.notices.listen((n) => _onNotice(session, n));
     return session;
+  }
+
+  List<Conversation> _convosFrom({
+    required String idPrefix,
+    required List<MeshChannel> channels,
+    required List<MeshContact> contacts,
+  }) {
+    final convos = <Conversation>[];
+    for (final ch in channels) {
+      convos.add(
+        Conversation(
+          id: '$idPrefix-ch${ch.index}',
+          title: ch.name,
+          isChannel: true,
+          channelIdx: ch.index,
+        ),
+      );
+    }
+    if (convos.isEmpty) {
+      convos.add(
+        Conversation(
+          id: '$idPrefix-ch0',
+          title: 'Public',
+          isChannel: true,
+          channelIdx: 0,
+        ),
+      );
+    }
+    for (final c in contacts) {
+      convos.add(_convoForContact(idPrefix, c));
+    }
+    return convos;
+  }
+
+  Conversation _convoForContact(String idPrefix, MeshContact c) {
+    return Conversation(
+      id: '$idPrefix-dm-${c.keyHex}',
+      title: c.name,
+      isChannel: false,
+      peerKey: Uint8List.fromList(c.publicKey),
+      peerType: c.type,
+      favourite: c.isFavourite,
+    );
   }
 
   void switchNode(String id) {
@@ -125,7 +183,20 @@ class AppController extends ChangeNotifier {
 
   void open(Conversation c) {
     _open = c;
+    c.unread = 0;
     notifyListeners();
+  }
+
+  Conversation openContact(MeshContact contact) {
+    final existing = _findConvoFor(active, contact.publicKey);
+    if (existing != null) {
+      open(existing);
+      return existing;
+    }
+    final convo = _convoForContact(active.id, contact);
+    active.conversations.add(convo);
+    open(convo);
+    return convo;
   }
 
   void useSimulator() {
@@ -178,53 +249,23 @@ class AppController extends ChangeNotifier {
         codec: codec,
         budget: AirtimeBudget(),
       );
-      final convos = <Conversation>[
-        Conversation(
-          id: 'ch0',
-          title: 'Public',
-          isChannel: true,
-          channelIdx: 0,
-        ),
-      ];
-      for (final ch in _bleClient!.channels) {
-        if (ch.index == 0) {
-          convos[0] = Conversation(
-            id: 'ch${ch.index}',
-            title: ch.name,
-            isChannel: true,
-            channelIdx: ch.index,
-          );
-        } else {
-          convos.add(
-            Conversation(
-              id: 'ch${ch.index}',
-              title: ch.name,
-              isChannel: true,
-              channelIdx: ch.index,
-            ),
-          );
-        }
-      }
-      for (final c in _bleClient!.contacts) {
-        convos.add(
-          Conversation(
-            id: 'dm-${c.name}',
-            title: c.name,
-            isChannel: false,
-            peerKey: Uint8List.fromList(c.publicKey),
-          ),
-        );
-      }
       final name = _bleClient!.self?.name ?? hit.name;
-      sessions['ble'] = NodeSession(
+      final session = NodeSession(
         id: 'ble',
         name: name,
         radio: _bleClient!,
         engine: engine,
-        conversations: convos,
-      )..sub = engine.events.listen((e) => _onEvent(sessions['ble']!, e));
+        conversations: _convosFrom(
+          idPrefix: 'ble',
+          channels: _bleClient!.channels,
+          contacts: _bleClient!.contacts,
+        ),
+      );
+      session.sub = engine.events.listen((e) => _onEvent(session, e));
+      session.noticeSub = _bleClient!.notices.listen((n) => _onNotice(session, n));
+      sessions['ble'] = session;
       activeNodeId = 'ble';
-      _open = convos.first;
+      _open = session.conversations.first;
       status = 'Verbunden mit $name';
       notifyListeners();
     } catch (e) {
@@ -236,23 +277,62 @@ class AppController extends ChangeNotifier {
 
   RadioDestination destFor(Conversation c) {
     if (c.isChannel) return RadioDestination.channel(c.channelIdx ?? 0);
-    return RadioDestination.dm(c.peerKey ?? Uint8List(6));
+    final key = c.peerKey ?? Uint8List(6);
+    MeshContact? peer;
+    for (final contact in contacts) {
+      if (contact.publicKey.length >= key.length) {
+        var ok = true;
+        for (var i = 0; i < key.length && i < 6; i++) {
+          if (contact.publicKey[i] != key[i]) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) {
+          peer = contact;
+          break;
+        }
+      }
+    }
+    final path = peer != null && peer.hasPath
+        ? Uint8List.fromList(peer.outPath!)
+        : null;
+    return RadioDestination.dm(key, path: path);
   }
 
   Future<void> sendText(String text) async {
     final conv = _open;
     if (conv == null || text.trim().isEmpty) return;
-    conv.messages.add(
-      ChatMessage(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        kind: ChatKind.text,
-        outgoing: true,
-        timestamp: DateTime.now(),
-        text: text.trim(),
-      ),
+    final msg = ChatMessage(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      kind: ChatKind.text,
+      outgoing: true,
+      timestamp: DateTime.now(),
+      text: text.trim(),
+      delivery: conv.isChannel ? DeliveryStatus.sent : DeliveryStatus.sending,
     );
+    conv.messages.add(msg);
     notifyListeners();
-    await active.engine.sendText(destFor(conv), text.trim());
+    try {
+      final receipt = await active.engine.sendText(destFor(conv), text.trim());
+      final idx = conv.messages.indexWhere((m) => m.id == msg.id);
+      if (idx >= 0) {
+        conv.messages[idx] = conv.messages[idx].copyWith(
+          delivery: DeliveryStatus.sent,
+          ackCode: receipt?.expectedAck,
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      final idx = conv.messages.indexWhere((m) => m.id == msg.id);
+      if (idx >= 0) {
+        conv.messages[idx] = conv.messages[idx].copyWith(
+          delivery: DeliveryStatus.failed,
+        );
+      }
+      error = 'Senden fehlgeschlagen: $e';
+      notifyListeners();
+    }
   }
 
   Future<EncodedTransfer> previewEncode(
@@ -281,8 +361,6 @@ class AppController extends ChangeNotifier {
       encoded: encoded,
       destination: dest,
     );
-    // The sender has the original — their own bubble shows it at full quality,
-    // not the quantized preview that goes over the air.
     final local = source != null ? fullResImage(source) : sent.preview.image;
     conv.messages.add(
       ChatMessage(
@@ -311,9 +389,163 @@ class AppController extends ChangeNotifier {
     await active.engine.requestUpgrade(msg.transferId!, destFor(conv));
   }
 
+  Future<void> sendAdvert({bool flood = false}) async {
+    await companion?.sendSelfAdvert(flood: flood);
+    status = flood ? 'Advert (Flood) gesendet' : 'Advert (Zero-Hop) gesendet';
+    notifyListeners();
+  }
+
+  Future<void> renameSelf(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    await companion?.setAdvertName(trimmed);
+    active.name = trimmed;
+    status = 'Name: $trimmed';
+    notifyListeners();
+  }
+
+  Future<void> applyRadio(RadioSettings settings) async {
+    await companion?.applyRadio(settings);
+    status = 'Funk: ${settings.summary}';
+    notifyListeners();
+  }
+
+  Future<void> refreshBattery() async {
+    await companion?.refreshBattery();
+    notifyListeners();
+  }
+
+  Future<void> toggleFavourite(MeshContact contact) async {
+    await companion?.setFavourite(contact, !contact.isFavourite);
+    final convo = _findConvoFor(active, contact.publicKey);
+    if (convo != null) convo.favourite = !contact.isFavourite;
+    notifyListeners();
+  }
+
+  Future<void> deleteContact(MeshContact contact) async {
+    await companion?.removeContact(contact);
+    active.conversations.removeWhere((c) {
+      if (c.isChannel || c.peerKey == null) return false;
+      return _keyEq(c.peerKey!, contact.publicKey);
+    });
+    notifyListeners();
+  }
+
+  Future<void> ping(MeshContact contact) async {
+    status = 'Ping an ${contact.name} …';
+    notifyListeners();
+    await companion?.ping(contact);
+  }
+
+  Future<void> shareZeroHop(MeshContact contact) async {
+    await companion?.shareContactZeroHop(contact);
+    status = '${contact.name} per Zero-Hop geteilt';
+    notifyListeners();
+  }
+
+  Future<void> resetPath(MeshContact contact) async {
+    await companion?.resetPath(contact);
+    status = 'Pfad zu ${contact.name} zurückgesetzt';
+    notifyListeners();
+  }
+
+  String exportSelfUri() {
+    final me = self;
+    if (me == null) return '';
+    return MeshCoreUri.contact(name: me.name, publicKey: me.publicKey, type: me.type);
+  }
+
+  String exportContactUri(MeshContact contact) => MeshCoreUri.contact(
+        name: contact.name,
+        publicKey: contact.publicKey,
+        type: contact.type,
+      );
+
+  Future<String?> importContactUri(String raw) async {
+    final parsed = MeshCoreUri.parseContact(raw);
+    if (parsed == null) return 'Kein gültiger meshcore:// Kontakt';
+    await companion?.addOrUpdateContact(parsed);
+    if (_findConvoFor(active, parsed.publicKey) == null) {
+      active.conversations.add(_convoForContact(active.id, parsed));
+    }
+    status = '${parsed.name} importiert';
+    notifyListeners();
+    return null;
+  }
+
+  void _onNotice(NodeSession session, CompanionNotice n) {
+    switch (n.kind) {
+      case CompanionNoticeKind.ack:
+        _markDelivered(session, n.ackCode, n.rttMs);
+      case CompanionNoticeKind.advert:
+        if (n.contact != null) {
+          _ensureConvo(session, n.contact!);
+          status = 'Advert: ${n.contact!.name}';
+        }
+      case CompanionNoticeKind.status:
+        status = n.statusSummary;
+      case CompanionNoticeKind.pathUpdated:
+        status = 'Pfad aktualisiert';
+    }
+    notifyListeners();
+  }
+
+  void _markDelivered(NodeSession session, int? ack, int? rtt) {
+    if (ack == null) return;
+    for (final conv in session.conversations) {
+      for (var i = 0; i < conv.messages.length; i++) {
+        final m = conv.messages[i];
+        if (m.outgoing && m.ackCode == ack && m.delivery != DeliveryStatus.delivered) {
+          conv.messages[i] = m.copyWith(
+            delivery: DeliveryStatus.delivered,
+            rttMs: rtt,
+          );
+          return;
+        }
+      }
+    }
+    // Simulator: ACK may arrive before the receipt is stored.
+    for (final conv in session.conversations) {
+      for (var i = conv.messages.length - 1; i >= 0; i--) {
+        final m = conv.messages[i];
+        if (m.outgoing &&
+            m.kind == ChatKind.text &&
+            m.delivery != DeliveryStatus.delivered) {
+          conv.messages[i] = m.copyWith(
+            delivery: DeliveryStatus.delivered,
+            rttMs: rtt,
+            ackCode: ack,
+          );
+          return;
+        }
+      }
+    }
+  }
+
+  void _ensureConvo(NodeSession session, MeshContact contact) {
+    if (_findConvoFor(session, contact.publicKey) != null) return;
+    session.conversations.add(_convoForContact(session.id, contact));
+  }
+
+  Conversation? _findConvoFor(NodeSession session, List<int> key) {
+    for (final c in session.conversations) {
+      if (c.isChannel || c.peerKey == null) continue;
+      if (_keyEq(c.peerKey!, key)) return c;
+    }
+    return null;
+  }
+
+  bool _keyEq(List<int> a, List<int> b) {
+    final n = a.length < b.length ? a.length : b.length;
+    final take = n < 6 ? n : 6;
+    for (var i = 0; i < take; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return take > 0;
+  }
+
   void _onEvent(NodeSession session, TransferEvent e) {
     if (e.outgoing && e.image != null) {
-      // already added locally on send
       notifyListeners();
       return;
     }
@@ -365,11 +597,17 @@ class AppController extends ChangeNotifier {
         image: e.image,
         transferId: e.transferId,
         canPull: (e.image?.upgradeChunks ?? 0) > 0 && !e.fromChannel,
+        hopCount: e.hopCount,
+        snr: e.snr,
+        senderName: _nameForPrefix(session, e.senderPrefix),
       );
       if (existing >= 0) {
         conv.messages[existing] = msg;
       } else {
         conv.messages.add(msg);
+        if (!identical(conv, _open) || session.id != activeNodeId) {
+          conv.unread += 1;
+        }
       }
     } else if (e.isText) {
       conv.messages.add(
@@ -377,17 +615,58 @@ class AppController extends ChangeNotifier {
           id: DateTime.now().microsecondsSinceEpoch.toString(),
           kind: ChatKind.text,
           outgoing: false,
-          timestamp: DateTime.now(),
+          timestamp: e.timestamp != null
+              ? DateTime.fromMillisecondsSinceEpoch(e.timestamp! * 1000, isUtc: true)
+                  .toLocal()
+              : DateTime.now(),
           text: e.message,
+          hopCount: e.hopCount,
+          snr: e.snr,
+          senderName: _nameForPrefix(session, e.senderPrefix),
         ),
       );
+      if (!identical(conv, _open) || session.id != activeNodeId) {
+        conv.unread += 1;
+      }
     }
     notifyListeners();
+  }
+
+  String? _nameForPrefix(NodeSession session, Uint8List? prefix) {
+    if (prefix == null) return null;
+    for (final c in session.conversations) {
+      final key = c.peerKey;
+      if (key == null || key.length < prefix.length) continue;
+      var ok = true;
+      for (var i = 0; i < prefix.length; i++) {
+        if (key[i] != prefix[i]) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return c.title;
+    }
+    final ctrl = session.companion;
+    if (ctrl != null) {
+      for (final c in ctrl.contacts) {
+        if (c.publicKey.length < prefix.length) continue;
+        var ok = true;
+        for (var i = 0; i < prefix.length; i++) {
+          if (c.publicKey[i] != prefix[i]) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) return c.name;
+      }
+    }
+    return null;
   }
 
   void _disposeSessions() {
     for (final s in sessions.values) {
       s.sub?.cancel();
+      s.noticeSub?.cancel();
       s.engine.dispose();
       final r = s.radio;
       if (r is SimRadio) {

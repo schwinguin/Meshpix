@@ -3,25 +3,44 @@ import 'dart:typed_data';
 
 import '../models/channel.dart';
 import '../models/contact.dart';
+import '../models/device.dart';
 import '../transfer/protocol.dart';
 import 'constants.dart';
+import 'control.dart';
 import 'frames.dart';
 
-class DeviceSelf {
-  DeviceSelf({required this.name, required this.publicKey, this.txPower});
-  final String name;
-  final Uint8List publicKey;
-  final int? txPower;
-}
-
 class ParsedFrame {
-  ParsedFrame(this.code, {this.self, this.contact, this.channel, this.incoming, this.errorCode});
+  ParsedFrame(
+    this.code, {
+    this.self,
+    this.contact,
+    this.channel,
+    this.incoming,
+    this.errorCode,
+    this.receipt,
+    this.ackCode,
+    this.rttMs,
+    this.battery,
+    this.firmware,
+    this.advertKey,
+    this.exportCard,
+    this.statusSummary,
+  });
+
   final int code;
   final DeviceSelf? self;
   final MeshContact? contact;
   final MeshChannel? channel;
   final IncomingPacket? incoming;
   final int? errorCode;
+  final TxReceipt? receipt;
+  final int? ackCode;
+  final int? rttMs;
+  final BatteryInfo? battery;
+  final FirmwareInfo? firmware;
+  final Uint8List? advertKey;
+  final Uint8List? exportCard;
+  final String? statusSummary;
 }
 
 String _cstr(Uint8List d, int start, int maxLen) {
@@ -41,59 +60,51 @@ ParsedFrame? parseCompanionFrame(Uint8List d, {required int meshPixDataType}) {
   final code = d[0];
   switch (code) {
     case Resp.ok:
-    case Resp.msgSent:
     case Resp.noMoreMsgs:
     case Resp.contactsStart:
     case Resp.contactsEnd:
-    case Resp.deviceInfo:
+    case Resp.currTime:
     case Resp.msgWaiting:
       return ParsedFrame(code);
     case Resp.error:
       return ParsedFrame(code, errorCode: d.length > 1 ? d[1] : null);
-    case Resp.selfInfo:
-      if (d.length < 1 + 1 + 1 + 1 + 32) return ParsedFrame(code);
-      const keyOff = 4;
-      final key = d.sublist(keyOff, keyOff + 32);
-      // name is remainder after fixed fields; layout from companion wiki
-      final nameOff = 4 + 32 + 4 + 4 + 1 + 1 + 1 + 1 + 4 + 4 + 1 + 1;
-      final name = d.length > nameOff
-          ? utf8.decode(d.sublist(nameOff), allowMalformed: true)
-          : 'MeshCore';
+    case Resp.msgSent:
+      return ParsedFrame(code, receipt: _parseSent(d));
+    case Resp.sendConfirmed:
+      if (d.length < 9) return ParsedFrame(code);
       return ParsedFrame(
         code,
-        self: DeviceSelf(name: name, publicKey: key, txPower: d[2]),
+        ackCode: readU32(d, 1),
+        rttMs: readU32(d, 5),
       );
+    case Resp.deviceInfo:
+      return ParsedFrame(code, firmware: _parseDeviceInfo(d));
+    case Resp.selfInfo:
+      return ParsedFrame(code, self: _parseSelf(d));
     case Resp.contact:
-      if (d.length < 1 + 32 + 1 + 1 + 1 + 64 + 32) return ParsedFrame(code);
-      var o = 1;
-      final key = d.sublist(o, o + 32);
-      o += 32;
-      o += 1; // type
-      o += 1; // flags
-      final pathLen = readI8(d[o]);
-      o += 1;
-      final path = d.sublist(o, o + 64);
-      o += 64;
-      final name = _cstr(d, o, 32);
-      final outPath = pathLen > 0 && pathLen <= 64 ? path.sublist(0, pathLen) : Uint8List(0);
+    case Resp.newAdvert:
+      return ParsedFrame(code, contact: _parseContact(d));
+    case Resp.advert:
+    case Resp.pathUpdated:
+      if (d.length < 33) return ParsedFrame(code);
+      return ParsedFrame(code, advertKey: d.sublist(1, 33));
+    case Resp.battAndStorage:
+      if (d.length < 3) return ParsedFrame(code);
       return ParsedFrame(
         code,
-        contact: MeshContact(
-          publicKey: key,
-          name: name,
-          outPath: outPath,
+        battery: BatteryInfo(
+          milliVolts: readU16(d, 1),
+          usedKb: d.length >= 7 ? readU32(d, 3) : null,
+          totalKb: d.length >= 11 ? readU32(d, 7) : null,
         ),
       );
-    case Resp.channelInfo:
-      if (d.length < 3) return ParsedFrame(code);
-      final idx = d[1];
-      final name = d.length > 18
-          ? _cstr(d, 18, 32)
-          : 'Channel $idx';
+    case Resp.exportContact:
       return ParsedFrame(
         code,
-        channel: MeshChannel(index: idx, name: name.isEmpty ? 'Channel $idx' : name),
+        exportCard: d.length > 1 ? d.sublist(1) : Uint8List(0),
       );
+    case Resp.channelInfo:
+      return ParsedFrame(code, channel: _parseChannel(d));
     case Resp.contactMsgRecv:
     case Resp.contactMsgRecvV3:
       return ParsedFrame(code, incoming: _parseContactText(d, v3: code == Resp.contactMsgRecvV3));
@@ -110,9 +121,152 @@ ParsedFrame? parseCompanionFrame(Uint8List d, {required int meshPixDataType}) {
         code,
         incoming: _parseRawData(d, meshPixDataType: meshPixDataType),
       );
+    case Resp.statusResponse:
+    case Resp.telemetryResponse:
+      return ParsedFrame(
+        code,
+        statusSummary: _parseStatus(d),
+        advertKey: d.length >= 8 ? d.sublist(2, 8) : null,
+      );
     default:
       return ParsedFrame(code);
   }
+}
+
+TxReceipt _parseSent(Uint8List d) {
+  if (d.length < 10) return const TxReceipt();
+  return TxReceipt(
+    flooded: d[1] == 1,
+    expectedAck: readU32(d, 2),
+    timeoutMs: readU32(d, 6),
+  );
+}
+
+FirmwareInfo _parseDeviceInfo(Uint8List d) {
+  if (d.length < 2) return const FirmwareInfo();
+  return FirmwareInfo(
+    firmwareVer: d[1],
+    maxContacts: d.length > 2 ? d[2] * 2 : null,
+    maxChannels: d.length > 3 ? d[3] : null,
+    buildDate: d.length > 19 ? _cstr(d, 8, 12) : null,
+    model: d.length > 59 ? _cstr(d, 20, 40) : null,
+    semanticVersion: d.length > 79 ? _cstr(d, 60, 20) : null,
+  );
+}
+
+DeviceSelf _parseSelf(Uint8List d) {
+  if (d.length < 5) {
+    return DeviceSelf(name: 'MeshCore', publicKey: Uint8List(32));
+  }
+  const keyOff = 4;
+  final key = d.length >= keyOff + 32
+      ? d.sublist(keyOff, keyOff + 32)
+      : Uint8List(32);
+  double? lat;
+  double? lon;
+  RadioSettings? radio;
+  if (d.length >= 44) {
+    final li = readI32(d, 36);
+    final lo = readI32(d, 40);
+    if (li != 0 || lo != 0) {
+      lat = li / 1e6;
+      lon = lo / 1e6;
+    }
+  }
+  if (d.length >= 58) {
+    radio = RadioSettings(
+      freqMhz: readU32(d, 48) / 1000.0,
+      bwKhz: readU32(d, 52) / 1000.0,
+      spreadingFactor: d[56],
+      codingRate: d[57],
+      txPowerDbm: d[2],
+      maxTxPowerDbm: d[3],
+    );
+  }
+  const nameOff = 58;
+  final name = d.length > nameOff
+      ? utf8.decode(d.sublist(nameOff), allowMalformed: true).replaceAll('\u0000', '').trim()
+      : 'MeshCore';
+  return DeviceSelf(
+    name: name.isEmpty ? 'MeshCore' : name,
+    publicKey: key,
+    type: d.length > 1 ? d[1] : AdvType.chat,
+    txPower: d.length > 2 ? d[2] : null,
+    maxTxPower: d.length > 3 ? d[3] : null,
+    lat: lat,
+    lon: lon,
+    radio: radio,
+    manualAddContacts: d.length > 47 ? d[47] == 1 : false,
+  );
+}
+
+MeshContact? _parseContact(Uint8List d) {
+  if (d.length < 1 + 32 + 1 + 1 + 1 + 64 + 32) return null;
+  var o = 1;
+  final key = d.sublist(o, o + 32);
+  o += 32;
+  final type = d[o];
+  o += 1;
+  final flags = d[o];
+  o += 1;
+  final pathLen = readI8(d[o]);
+  o += 1;
+  final path = d.sublist(o, o + 64);
+  o += 64;
+  final name = _cstr(d, o, 32);
+  o += 32;
+  int? lastAdvert;
+  double? lat;
+  double? lon;
+  int? lastmod;
+  if (d.length >= o + 4) {
+    lastAdvert = readU32(d, o);
+    o += 4;
+  }
+  if (d.length >= o + 8) {
+    final li = readI32(d, o);
+    final lo = readI32(d, o + 4);
+    if (li != 0 || lo != 0) {
+      lat = li / 1e6;
+      lon = lo / 1e6;
+    }
+    o += 8;
+  }
+  if (d.length >= o + 4) {
+    lastmod = readU32(d, o);
+  }
+  final outPath = pathLen > 0 && pathLen <= 64 ? path.sublist(0, pathLen) : Uint8List(0);
+  return MeshContact(
+    publicKey: key,
+    name: name,
+    type: type,
+    flags: flags,
+    outPath: outPath,
+    lastAdvert: lastAdvert,
+    lat: lat,
+    lon: lon,
+    lastmod: lastmod,
+  );
+}
+
+MeshChannel _parseChannel(Uint8List d) {
+  if (d.length < 2) return MeshChannel(index: 0, name: 'Public');
+  final idx = d[1];
+  String name;
+  Uint8List? secret;
+  if (d.length >= 50) {
+    name = _cstr(d, 2, 32);
+    secret = d.sublist(34, 50);
+  } else if (d.length > 18) {
+    name = _cstr(d, 18, 32);
+  } else {
+    name = 'Channel $idx';
+  }
+  return MeshChannel(
+    index: idx,
+    name: name.isEmpty ? (idx == 0 ? 'Public' : 'Channel $idx') : name,
+    secret: secret,
+  );
 }
 
 IncomingPacket _parseContactText(Uint8List d, {required bool v3}) {
@@ -127,7 +281,8 @@ IncomingPacket _parseContactText(Uint8List d, {required bool v3}) {
   final pathLen = d[o];
   o += 1;
   o += 1; // txt type
-  o += 4; // timestamp
+  final ts = d.length >= o + 4 ? readU32(d, o) : 0;
+  o += 4;
   final text = utf8.decode(d.sublist(o), allowMalformed: true);
   return IncomingPacket(
     kind: IncomingKind.text,
@@ -135,6 +290,8 @@ IncomingPacket _parseContactText(Uint8List d, {required bool v3}) {
     senderPrefix: prefix,
     text: text,
     flooded: pathLen != 0xFF,
+    hopCount: pathLen == 0xFF ? 0 : pathLen,
+    timestamp: ts == 0 ? null : ts,
     snr: snr,
   );
 }
@@ -151,6 +308,7 @@ IncomingPacket _parseChannelText(Uint8List d, {required bool v3}) {
   final pathLen = d[o];
   o += 1;
   o += 1;
+  final ts = d.length >= o + 4 ? readU32(d, o) : 0;
   o += 4;
   final text = utf8.decode(d.sublist(o), allowMalformed: true);
   return IncomingPacket(
@@ -159,12 +317,13 @@ IncomingPacket _parseChannelText(Uint8List d, {required bool v3}) {
     channelIdx: idx,
     text: text,
     flooded: pathLen != 0xFF,
+    hopCount: pathLen == 0xFF ? 0 : pathLen,
+    timestamp: ts == 0 ? null : ts,
     snr: snr,
   );
 }
 
 IncomingPacket _parseChannelData(Uint8List d, {required int meshPixDataType}) {
-  // [0x1B][snr][res x2][ch][path_len][data_type u16][len][payload]
   if (d.length < 9) {
     return IncomingPacket(kind: IncomingKind.unknown, fromChannel: true);
   }
@@ -182,16 +341,17 @@ IncomingPacket _parseChannelData(Uint8List d, {required int meshPixDataType}) {
     dataType: dataType,
     payload: payload,
     flooded: pathLen != 0xFF,
+    hopCount: pathLen == 0xFF ? 0 : pathLen,
     snr: snr,
   );
 }
 
 IncomingPacket _parseRawData(Uint8List d, {required int meshPixDataType}) {
-  // [0x84][snr][rssi][0xFF][payload]
   if (d.length < 4) {
     return IncomingPacket(kind: IncomingKind.unknown, fromChannel: false);
   }
   final snr = readI8(d[1]) / 4.0;
+  final rssi = readI8(d[2]);
   final payload = d.sublist(4);
   final looksMp = payload.length >= 2 && payload[0] == 0x4D && payload[1] == 0x50;
   return IncomingPacket(
@@ -200,5 +360,19 @@ IncomingPacket _parseRawData(Uint8List d, {required int meshPixDataType}) {
     dataType: looksMp ? meshPixDataType : null,
     payload: payload,
     snr: snr,
+    rssi: rssi,
   );
+}
+
+String _parseStatus(Uint8List d) {
+  if (d.length < 8) return 'Antwort empfangen';
+  final rest = d.sublist(8);
+  if (rest.isEmpty) return 'Status OK';
+  if (rest.length >= 2) {
+    final mv = rest[0] | (rest[1] << 8);
+    if (mv > 2000 && mv < 5000) {
+      return 'Status · ${(mv / 1000).toStringAsFixed(2)} V';
+    }
+  }
+  return 'Status · ${rest.length} Byte';
 }
