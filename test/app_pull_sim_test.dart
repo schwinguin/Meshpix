@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:meshpix/codec/mp1.dart';
 import 'package:meshpix/codec/rgba.dart';
 import 'package:meshpix/state/app_controller.dart';
 
@@ -78,5 +80,65 @@ void main() {
       }
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
+  });
+
+  test('Sender sieht in seiner Blase das Original in voller Qualität', () async {
+    final app = AppController();
+    addTearDown(app.dispose);
+    app.open(app.sessions['anna']!.conversations.firstWhere((c) => !c.isChannel));
+
+    final source = makeTestCard(96);
+    final encoded = await app.previewEncode(
+      source,
+      includeUpgrade: true,
+      fourColor: true,
+    );
+    await app.sendEncoded(encoded, source: source);
+
+    final conv = app.sessions['anna']!.conversations.firstWhere((c) => !c.isChannel);
+    final out = conv.messages.firstWhere((m) => m.outgoing);
+    final img = out.image!;
+    // Nicht die quantisierte 24/48px-Preview, sondern das Original.
+    expect(img.isPhoto, isTrue,
+        reason: 'Sender-Blase muss das Original (argb) zeigen');
+    expect(img.width, 96);
+    expect(img.height, 96);
+    // Pixel für Pixel das Original (Spot-Check mehrerer Stellen).
+    final orig = source.toArgb();
+    final local = img.toArgb();
+    expect(local.length, orig.length);
+    for (final i in [0, 100, 5000, orig.length - 1]) {
+      expect(local[i], orig[i], reason: 'Pixel $i muss Original sein');
+    }
+  });
+
+  test('Nicht-quadratisches Original wird zentriert gequadratet, nie hochskaliert', () async {
+    final app = AppController();
+    addTearDown(app.dispose);
+    app.open(app.sessions['anna']!.conversations.firstWhere((c) => !c.isChannel));
+
+    // 128×64 (weit nicht-quadra) — Mindestseite 64 wird das Quadrat.
+    final w = 128, h = 64;
+    final bytes = Uint8List(w * h * 4);
+    for (var i = 0; i < w * h; i++) {
+      final p = i * 4;
+      bytes[p] = (i % 256);
+      bytes[p + 1] = 10;
+      bytes[p + 2] = 200;
+      bytes[p + 3] = 255;
+    }
+    final source = RgbaImage(width: w, height: h, bytes: bytes);
+    final encoded = await app.previewEncode(
+      source,
+      includeUpgrade: false,
+      fourColor: true,
+    );
+    await app.sendEncoded(encoded, source: source);
+
+    final conv = app.sessions['anna']!.conversations.firstWhere((c) => !c.isChannel);
+    final out = conv.messages.firstWhere((m) => m.outgoing);
+    final img = out.image!;
+    expect(img.width, 64, reason: 'Auf Mindestseite quadratieren');
+    expect(img.height, 64);
   });
 }

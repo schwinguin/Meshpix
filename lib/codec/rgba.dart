@@ -59,6 +59,18 @@ class RgbaImage {
       bytes: cropped,
     ).resizeNearest(size, size);
   }
+
+  /// 0xAARRGGBB pixel buffer (Flutter `Color` layout).
+  Uint32List toArgb() {
+    final out = Uint32List(width * height);
+    for (var i = 0; i < width * height; i++) {
+      final r = bytes[i * 4];
+      final g = bytes[i * 4 + 1];
+      final b = bytes[i * 4 + 2];
+      out[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+    return out;
+  }
 }
 
 /// Synthetic test card so the composer works without a camera.

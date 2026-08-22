@@ -163,7 +163,7 @@ class _ComposerScreenState extends State<ComposerScreen> {
             onPressed: _encoded == null || _busy
                 ? null
                 : () async {
-                    await app.sendEncoded(_encoded!);
+                    await app.sendEncoded(_encoded!, source: _source);
                     if (context.mounted) Navigator.pop(context);
                   },
             style: FilledButton.styleFrom(backgroundColor: meshAmber),
