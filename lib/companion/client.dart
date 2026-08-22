@@ -155,6 +155,7 @@ class CompanionClient implements PacketRadio, CompanionControl {
         maxTxPower: self!.maxTxPower,
         lat: self!.lat,
         lon: self!.lon,
+        alt: self!.alt,
         radio: self!.radio,
         manualAddContacts: self!.manualAddContacts,
       );

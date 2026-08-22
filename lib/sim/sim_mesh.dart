@@ -11,10 +11,20 @@ import '../models/repeater.dart';
 import '../transfer/protocol.dart';
 
 class SimIdentity {
-  SimIdentity({required this.id, required this.name, required this.publicKey});
+  SimIdentity({
+    required this.id,
+    required this.name,
+    required this.publicKey,
+    this.lat,
+    this.lon,
+    this.alt,
+  });
   final String id;
   String name;
   final Uint8List publicKey;
+  double? lat;
+  double? lon;
+  double? alt;
 }
 
 class SimVirtualRepeater {
@@ -133,12 +143,17 @@ class SimRadio implements PacketRadio, CompanionControl {
   @override
   Stream<CompanionNotice> get notices => _notices.stream;
 
+  int noiseFloor = -98;
+
   @override
   DeviceSelf get self => DeviceSelf(
         name: identity.name,
         publicKey: identity.publicKey,
         radio: radio,
         txPower: radio.txPowerDbm,
+        lat: identity.lat,
+        lon: identity.lon,
+        alt: identity.alt,
       );
 
   void loadPeers() {
@@ -168,6 +183,9 @@ class SimRadio implements PacketRadio, CompanionControl {
       flags: existing?.flags ?? 0,
       outPath: existing?.outPath ?? Uint8List.fromList([0x01]),
       lastAdvert: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      lat: r.identity.lat,
+      lon: r.identity.lon,
+      alt: r.identity.alt,
     );
   }
 
@@ -305,11 +323,17 @@ class SimRadio implements PacketRadio, CompanionControl {
 
   @override
   Future<void> requestStatus(MeshContact contact) async {
+    final hops = contact.hopCount;
+    final delay = 28 + hops * 16 + _rng.nextInt(14);
+    await Future<void>.delayed(Duration(milliseconds: delay));
+    if (!reachable) return;
+    final noise = noiseFloor + _rng.nextInt(7) - 3;
+    final snr = 8.5 - hops * 1.4 + _rng.nextDouble();
     final status = RepeaterStatus(
       milliVolts: mesh.repeater?.milliVolts ?? 3920,
       queueLen: 1,
-      noiseFloor: -98,
-      lastRssi: -91,
+      noiseFloor: noise,
+      lastRssi: -88 - hops * 4,
       packetsRecv: 1280,
       packetsSent: 940,
       airtimeSecs: 180,
@@ -318,13 +342,14 @@ class SimRadio implements PacketRadio, CompanionControl {
       sentDirect: 540,
       recvFlood: 700,
       recvDirect: 580,
-      lastSnr: 6.5,
+      lastSnr: snr,
     );
     _notices.add(
       CompanionNotice.status(
         prefix: contact.publicKey.take(6).toList(),
-        statusSummary: '${status.summary} · ${12 + _rng.nextInt(30)} ms',
+        statusSummary: '${status.summary} · $delay ms',
         repeaterStatus: status,
+        rttMs: delay,
       ),
     );
   }

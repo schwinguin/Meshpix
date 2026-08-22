@@ -5,6 +5,7 @@ import '../state/app_controller.dart';
 import 'chat_screen.dart';
 import 'contacts_screen.dart';
 import 'format.dart';
+import 'path_screen.dart';
 import 'radio_screen.dart';
 import 'share_card.dart';
 import 'theme.dart';
@@ -119,6 +120,11 @@ class HomeScreen extends StatelessWidget {
                   selectedIcon: Icon(Icons.settings_input_antenna),
                   label: 'Funk',
                 ),
+                NavigationDestination(
+                  icon: Icon(Icons.visibility_outlined),
+                  selectedIcon: Icon(Icons.visibility),
+                  label: 'Pfad',
+                ),
               ],
             ),
     );
@@ -130,6 +136,8 @@ class HomeScreen extends StatelessWidget {
         return const ContactsPane();
       case 2:
         return const RadioPane();
+      case 3:
+        return const PathPane();
       default:
         return _ConvoList(app: app);
     }

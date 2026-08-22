@@ -12,5 +12,6 @@ void main() {
     expect(find.text('Chats'), findsOneWidget);
     expect(find.text('Kontakte'), findsOneWidget);
     expect(find.text('Funk'), findsOneWidget);
+    expect(find.text('Pfad'), findsOneWidget);
   });
 }

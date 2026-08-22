@@ -105,6 +105,15 @@ class _RepeaterAdminScreenState extends State<RepeaterAdminScreen> {
                   icon: const Icon(Icons.alt_route),
                   label: const Text('Pfad-Trace'),
                 ),
+                FilledButton.tonalIcon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    app.showPath(focus: widget.contact);
+                    app.ping(widget.contact);
+                  },
+                  icon: const Icon(Icons.podcasts),
+                  label: const Text('Ping / Sicht'),
+                ),
               ],
             ),
             const SizedBox(height: 12),

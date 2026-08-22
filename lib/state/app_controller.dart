@@ -7,11 +7,15 @@ import '../codec/rgba.dart';
 import '../companion/ble.dart';
 import '../companion/client.dart';
 import '../companion/control.dart';
+import '../geo/elevation.dart';
+import '../geo/geo.dart';
+import '../geo/los.dart';
 import '../models/channel.dart';
 import '../models/chat.dart';
 import '../models/contact.dart';
 import '../models/device.dart';
 import '../models/repeater.dart';
+import '../models/signal.dart';
 import '../models/uri_card.dart';
 import '../sim/sim_mesh.dart';
 import '../transfer/catchup.dart';
@@ -58,6 +62,20 @@ class AppController extends ChangeNotifier {
   bool scanning = false;
   int homeTab = 0;
   final repeaterSessions = <String, RepeaterSession>{};
+  final pings = <String, PingResult>{};
+  final noiseSamples = <NoiseSample>[];
+  final _pingStarted = <String, DateTime>{};
+  final _pingTimers = <String, Timer>{};
+  bool pingingAll = false;
+  String? pathFocusKey;
+  LosResult? lastLos;
+  bool losBusy = false;
+  double? selfLatOverride;
+  double? selfLonOverride;
+  double? selfAltOverride;
+  double selfAglM = 2;
+  bool useOnlineElevation = false;
+  ElevationSource elevationSource = const SyntheticElevation();
 
   CompanionClient? _bleClient;
   BleTransport? _bleTransport;
@@ -89,16 +107,26 @@ class AppController extends ChangeNotifier {
 
   void _bootSimulator() {
     _disposeSessions();
+    pings.clear();
+    noiseSamples.clear();
+    lastLos = null;
+    pathFocusKey = null;
     mode = AppMode.simulator;
     final anna = SimIdentity(
       id: 'anna',
       name: 'Anna',
       publicKey: keyFromSeed(11),
+      lat: 48.137154,
+      lon: 11.576124,
+      alt: 515,
     );
     final ben = SimIdentity(
       id: 'ben',
       name: 'Ben',
       publicKey: keyFromSeed(23),
+      lat: 48.1520,
+      lon: 11.6120,
+      alt: 525,
     );
     final annaRadio = SimRadio(mesh: mesh, identity: anna);
     final benRadio = SimRadio(mesh: mesh, identity: ben);
@@ -110,6 +138,9 @@ class AppController extends ChangeNotifier {
       type: AdvType.repeater,
       outPath: Uint8List.fromList([0x02, 0x07]),
       lastAdvert: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      lat: 47.7033,
+      lon: 12.0123,
+      alt: 1838,
     );
     mesh.repeater = SimVirtualRepeater(contact: relay);
     annaRadio.contacts.add(relay);
@@ -488,10 +519,134 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void showPath({MeshContact? focus}) {
+    homeTab = 3;
+    pathFocusKey = focus?.keyHex;
+    notifyListeners();
+  }
+
+  void setSelfFix({double? lat, double? lon, double? alt, double? aglM}) {
+    if (lat != null) selfLatOverride = lat;
+    if (lon != null) selfLonOverride = lon;
+    if (alt != null) selfAltOverride = alt;
+    if (aglM != null) selfAglM = aglM;
+    notifyListeners();
+  }
+
+  void setOnlineElevation(bool on) {
+    useOnlineElevation = on;
+    elevationSource = on ? OpenMeteoElevation() : const SyntheticElevation();
+    notifyListeners();
+  }
+
   Future<void> ping(MeshContact contact) async {
+    final key = contact.keyHex;
+    _pingTimers[key]?.cancel();
+    _pingStarted[key] = DateTime.now();
+    pings[key] = PingResult(
+      keyHex: key,
+      name: contact.name,
+      type: contact.type,
+      at: DateTime.now(),
+      inFlight: true,
+      hops: contact.hopCount,
+    );
     status = 'Ping an ${contact.name} …';
     notifyListeners();
-    await companion?.requestStatus(contact);
+    _pingTimers[key] = Timer(const Duration(seconds: 4), () {
+      final cur = pings[key];
+      if (cur == null || !cur.inFlight) return;
+      pings[key] = cur.copyWith(inFlight: false, ok: false);
+      status = '${contact.name}: keine Antwort';
+      notifyListeners();
+    });
+    try {
+      await companion?.requestStatus(contact);
+    } catch (e) {
+      _pingTimers[key]?.cancel();
+      pings[key] = pings[key]!.copyWith(inFlight: false, ok: false);
+      status = 'Ping fehlgeschlagen: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> pingAll() async {
+    if (pingingAll) return;
+    pingingAll = true;
+    notifyListeners();
+    for (final c in [...contacts]) {
+      await ping(c);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    }
+    pingingAll = false;
+    notifyListeners();
+  }
+
+  GeoPoint? selfPoint() {
+    final me = self;
+    final lat = selfLatOverride ?? me?.lat;
+    final lon = selfLonOverride ?? me?.lon;
+    final alt = selfAltOverride ?? me?.alt ?? 0;
+    if (lat == null || lon == null) return null;
+    final p = GeoPoint(lat: lat, lon: lon, elevM: alt, aglM: selfAglM);
+    return p.isValid ? p : null;
+  }
+
+  GeoPoint? pointFor(MeshContact c, {double? aglM}) {
+    if (!c.hasLocation) return null;
+    final p = GeoPoint(
+      lat: c.lat!,
+      lon: c.lon!,
+      elevM: c.alt ?? 0,
+      aglM: aglM ?? defaultAgl(c.type),
+    );
+    return p.isValid ? p : null;
+  }
+
+  Future<LosResult> computeLos(MeshContact dest, {double? destAgl}) async {
+    final from = selfPoint();
+    final to = pointFor(dest, aglM: destAgl);
+    losBusy = true;
+    pathFocusKey = dest.keyHex;
+    notifyListeners();
+    if (from == null || to == null) {
+      lastLos = analyzeLos(
+        from: from ?? const GeoPoint(lat: 0, lon: 0),
+        to: to ?? const GeoPoint(lat: 0, lon: 0),
+        fromName: self?.name ?? active.name,
+        toName: dest.name,
+        freqMhz: radioSettings?.freqMhz ?? 869.525,
+      );
+      losBusy = false;
+      notifyListeners();
+      return lastLos!;
+    }
+    List<double> terrain;
+    try {
+      terrain = await elevationSource.along(from, to);
+    } catch (_) {
+      terrain = syntheticTerrain(from, to);
+    }
+    lastLos = analyzeLos(
+      from: from,
+      to: to,
+      fromName: self?.name ?? active.name,
+      toName: dest.name,
+      freqMhz: radioSettings?.freqMhz ?? 869.525,
+      terrainM: terrain,
+    );
+    losBusy = false;
+    notifyListeners();
+    return lastLos!;
+  }
+
+  NoiseSample? get lastNoise =>
+      noiseSamples.isEmpty ? null : noiseSamples.last;
+
+  int? get localNoiseFloor {
+    final radio = sessions[activeNodeId]?.radio;
+    if (radio is SimRadio) return radio.noiseFloor;
+    return lastNoise?.dbm;
   }
 
   RepeaterSession repeaterSession(MeshContact contact) {
@@ -634,6 +789,7 @@ class AppController extends ChangeNotifier {
         }
       case CompanionNoticeKind.status:
         status = n.statusSummary;
+        _recordPingReply(session, n);
         final st = _repeaterByPrefix(n.pubkey);
         if (st != null) {
           st.status = n.repeaterStatus ?? st.status;
@@ -689,6 +845,7 @@ class AppController extends ChangeNotifier {
         }
       case CompanionNoticeKind.trace:
         status = n.traceSummary ?? 'Trace empfangen';
+        _recordTracePing(n);
         final tr = _repeaterByPrefix(n.pubkey);
         if (tr != null) {
           tr.transcript.add(
@@ -935,6 +1092,54 @@ class AppController extends ChangeNotifier {
     return _contactForPrefix(session, prefix)?.keyHex ?? _hex(prefix);
   }
 
+  void _recordPingReply(NodeSession session, CompanionNotice n) {
+    final prefix = n.pubkey == null ? null : Uint8List.fromList(n.pubkey!);
+    final contact = _contactForPrefix(session, prefix);
+    var key = contact?.keyHex ?? _keyHexForPrefix(session, prefix);
+    if (key == null) {
+      final flying = pings.entries.where((e) => e.value.inFlight).toList();
+      if (flying.length == 1) key = flying.first.key;
+    }
+    if (key == null) return;
+    final started = _pingStarted[key];
+    final rtt = n.rttMs ??
+        (started == null
+            ? null
+            : DateTime.now().difference(started).inMilliseconds);
+    final noise = n.repeaterStatus?.noiseFloor;
+    final prev = pings[key];
+    pings[key] = PingResult(
+      keyHex: key,
+      name: contact?.name ?? prev?.name ?? 'Node',
+      type: contact?.type ?? prev?.type ?? AdvType.chat,
+      at: DateTime.now(),
+      inFlight: false,
+      ok: true,
+      rttMs: rtt,
+      snr: n.repeaterStatus?.lastSnr ?? prev?.snr,
+      noiseFloor: noise ?? prev?.noiseFloor,
+      rssi: n.repeaterStatus?.lastRssi ?? prev?.rssi,
+      hops: contact?.hopCount ?? prev?.hops,
+    );
+    _pingTimers[key]?.cancel();
+    if (noise != null) {
+      noiseSamples.add(
+        NoiseSample(dbm: noise, at: DateTime.now(), sourceName: contact?.name),
+      );
+      if (noiseSamples.length > 40) noiseSamples.removeAt(0);
+    }
+  }
+
+  void _recordTracePing(CompanionNotice n) {
+    final prefix = n.pubkey == null ? null : Uint8List.fromList(n.pubkey!);
+    final key = _keyHexForPrefix(active, prefix);
+    if (key == null) return;
+    final prev = pings[key];
+    if (prev == null) return;
+    pings[key] = prev.copyWith(ok: true, inFlight: false);
+    _pingTimers[key]?.cancel();
+  }
+
   void _handleCatchUp(NodeSession session, TransferEvent e) {
     final pkt = e.catchUp!;
     if (pkt.isReceipt) {
@@ -1132,6 +1337,10 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    for (final t in _pingTimers.values) {
+      t.cancel();
+    }
+    _pingTimers.clear();
     _scanSub?.cancel();
     _disconnectBle();
     _disposeSessions();

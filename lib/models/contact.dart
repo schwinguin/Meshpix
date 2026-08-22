@@ -38,6 +38,7 @@ class MeshContact {
     this.lastAdvert,
     this.lat,
     this.lon,
+    this.alt,
     this.lastmod,
   });
 
@@ -49,6 +50,7 @@ class MeshContact {
   final int? lastAdvert;
   final double? lat;
   final double? lon;
+  final double? alt;
   final int? lastmod;
 
   bool get hasPath => outPath != null && outPath!.isNotEmpty;
@@ -85,6 +87,7 @@ class MeshContact {
     int? lastAdvert,
     double? lat,
     double? lon,
+    double? alt,
     int? lastmod,
   }) {
     return MeshContact(
@@ -96,6 +99,7 @@ class MeshContact {
       lastAdvert: lastAdvert ?? this.lastAdvert,
       lat: lat ?? this.lat,
       lon: lon ?? this.lon,
+      alt: alt ?? this.alt,
       lastmod: lastmod ?? this.lastmod,
     );
   }
@@ -110,6 +114,7 @@ class DeviceSelf {
     this.maxTxPower,
     this.lat,
     this.lon,
+    this.alt,
     this.radio,
     this.manualAddContacts = false,
   });
@@ -121,6 +126,7 @@ class DeviceSelf {
   final int? maxTxPower;
   final double? lat;
   final double? lon;
+  final double? alt;
   final RadioSettings? radio;
   final bool manualAddContacts;
 

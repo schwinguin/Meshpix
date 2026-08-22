@@ -92,9 +92,13 @@ class ContactDetailScreen extends StatelessWidget {
             runSpacing: 8,
             children: [
               FilledButton.tonalIcon(
-                onPressed: () => app.ping(live),
+                onPressed: () {
+                  Navigator.pop(context);
+                  app.showPath(focus: live);
+                  app.ping(live);
+                },
                 icon: const Icon(Icons.sensors),
-                label: const Text('Ping / Status'),
+                label: const Text('Ping / Sicht'),
               ),
               FilledButton.tonalIcon(
                 onPressed: () => showShareCard(

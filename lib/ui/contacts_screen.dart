@@ -41,7 +41,20 @@ class ContactsPane extends StatelessWidget {
               formatHeard(c.lastHeard),
             ].join(' · '),
           ),
-          trailing: c.isFavourite ? const Icon(Icons.star, color: meshAmber, size: 18) : null,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Ping',
+                onPressed: () {
+                  app.showPath(focus: c);
+                  app.ping(c);
+                },
+                icon: const Icon(Icons.podcasts, size: 20),
+              ),
+              if (c.isFavourite) const Icon(Icons.star, color: meshAmber, size: 18),
+            ],
+          ),
           onTap: () {
             if (c.isChat) {
               app.openContact(c);

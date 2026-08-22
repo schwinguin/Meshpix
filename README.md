@@ -23,17 +23,18 @@ Bluetooth koppelt an einen echten MeshCore-Companion (Nordic UART, Prefix z. B. 
 
 Neben Bildern spricht MeshPix dasselbe Companion-Protokoll wie MeshCore One:
 
-- **Chats / Kontakte / Funk** als Tabs
+- **Chats / Kontakte / Funk / Pfad** als Tabs
 - Direct Messages mit **Sending → Sent → Delivered** (ACK + RTT)
 - Hop-Anzahl und SNR an der Blase
 - Kontakte mit Typ (Chat, Repeater, Room, Sensor), Favorit, zuletzt gehört, Pfad
 - **Zero-Hop- / Flood-Advert**, Auto-Discovery
-- **Ping / Status** an einen Kontakt
+- **Ping / Status** an bekannte Repeater und Kontakte (Laufzeit, SNR, Noise)
 - Radio: Frequenz, SF, BW, CR, TX-Power + regionale **Presets** (EU/US/AU/UK)
 - Batterie, Firmware, Advert-Name
 - Kontaktkarte als **QR / `meshcore://contact/add?...`** (kompatibel mit MeshCore One)
 - **Repeater / Room Admin**: Login, Status (Batterie, Uptime, SNR, Pakete), Nachbarn, CLI, ACL `setperm`, Pfad-Trace, Reboot mit Bestätigung
 - **Channel-Nachreichen**: Flood bleibt ohne ACK. Der Sender merkt sich bekannte Chat-Kontakte (live / fehlt). Wer beim Flood off-grid war, bekommt die Nachricht per DM nachgereicht, sobald sein Advert wieder gehört wird — plus Quittung zurück an den Sender (`Flood · 1/2 gehört`). Bilder als kurzer `📷 Bild`-Hinweis, nicht als zweiter Flood.
+- **Pfad-Tab**: Ping an alle bekannten Nodes, Noise-Floor-Bogen (dBm + Verlauf) und **Sichtlinie** als Geländeprofil (Erdkugel, erste Fresnelzone, Frei / Knapp / Verdeckt). Optional echte Höhen von Open-Meteo.
 
 ## Protokoll (Companion-Subset)
 
@@ -86,4 +87,4 @@ Signing, Provisioning und Play/App-Store-Release sind nicht Teil dieses MVP.
 
 ## Limits (bewusst)
 
-Keine Offline-Karte, kein Firmware-Flash, keine Line-of-Sight-Karten, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion. Room-Server sind MeshCores eigenes Store-and-Forward; das Channel-Nachreichen ist ein MeshPix-Overlay für Public-Flood. Der Simulator enthält **Relay1** (Passwort `password`). Off-grid lässt sich dort per `setSimReachable` nachstellen.
+Keine Offline-Stadtkarte, kein Firmware-Flash, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion. Die Sichtlinie ist ein Profil, kein Kartenlayer. Room-Server sind MeshCores eigenes Store-and-Forward; das Channel-Nachreichen ist ein MeshPix-Overlay für Public-Flood. Der Simulator enthält **Relay1** (Passwort `password`, Wendelstein-Position). Off-grid lässt sich dort per `setSimReachable` nachstellen.
