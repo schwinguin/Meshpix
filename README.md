@@ -11,7 +11,7 @@ Ein MeshCore-Channel-Datagramm hat **163 Byte** Nutzlast. Ein Handyfoto passt ni
 | Preview | 24×24, 4 Farben (immer 1 Paket) oder 16×16 / 24×24 mit 16 Farben wenn es passt | Channel: Flood. DM: Direct |
 | Nachzug | JPEG bis ~160×160 in ≤32 Chunks; Fallback 96/80/64/48 Indexed | nur DM nach *Nachladen*, nie Public-Flood |
 
-`data_type` für MeshPix-Datagramme: `0xFF50`.
+`data_type` für MeshPix-Bilder: `0xFF50`. Channel-Catch-up / Quittungen: `0xFF51`.
 
 ## Simulator ohne Funkgerät
 
@@ -33,6 +33,7 @@ Neben Bildern spricht MeshPix dasselbe Companion-Protokoll wie MeshCore One:
 - Batterie, Firmware, Advert-Name
 - Kontaktkarte als **QR / `meshcore://contact/add?...`** (kompatibel mit MeshCore One)
 - **Repeater / Room Admin**: Login, Status (Batterie, Uptime, SNR, Pakete), Nachbarn, CLI, ACL `setperm`, Pfad-Trace, Reboot mit Bestätigung
+- **Channel-Nachreichen**: Flood bleibt ohne ACK. Der Sender merkt sich bekannte Chat-Kontakte (live / fehlt). Wer beim Flood off-grid war, bekommt die Nachricht per DM nachgereicht, sobald sein Advert wieder gehört wird — plus Quittung zurück an den Sender (`Flood · 1/2 gehört`). Bilder als kurzer `📷 Bild`-Hinweis, nicht als zweiter Flood.
 
 ## Protokoll (Companion-Subset)
 
@@ -44,6 +45,7 @@ Handshake und Traffic folgen der [Companion Radio Protocol](https://docs.meshcor
 - Delivery: `RESP_CODE_SENT`, `PUSH_CODE_SEND_CONFIRMED`
 - Bilder Channel: `CMD_SEND_CHANNEL_DATA` (`0x3E`)
 - Bilder DM: `CMD_SEND_RAW_DATA` (`0x19`)
+- Channel-Catch-up (MeshPix): `CMD_SEND_RAW_DATA` mit `data_type` `0xFF51` (Text / Receipt / Sync, Magic `MC`)
 - Funk: `CMD_SET_RADIO_PARAMS`, `CMD_SET_RADIO_TX_POWER`, `CMD_GET_BATT_AND_STORAGE`
 - Repeater-Admin: `CMD_SEND_LOGIN`, CLI als `TXT_TYPE_CLI_DATA`, `CMD_SEND_STATUS_REQ`, `CMD_SEND_TRACE_PATH`
 - Empfang: `RESP_CODE_CHANNEL_DATA_RECV`, `PUSH_CODE_RAW_DATA`, Message-Sync
@@ -84,4 +86,4 @@ Signing, Provisioning und Play/App-Store-Release sind nicht Teil dieses MVP.
 
 ## Limits (bewusst)
 
-Keine Offline-Karte, kein Firmware-Flash, keine Line-of-Sight-Karten, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion. Der Simulator enthält **Relay1** (Passwort `password`).
+Keine Offline-Karte, kein Firmware-Flash, keine Line-of-Sight-Karten, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion. Room-Server sind MeshCores eigenes Store-and-Forward; das Channel-Nachreichen ist ein MeshPix-Overlay für Public-Flood. Der Simulator enthält **Relay1** (Passwort `password`). Off-grid lässt sich dort per `setSimReachable` nachstellen.

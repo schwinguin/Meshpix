@@ -6,6 +6,28 @@ enum ChatKind { text, image }
 
 enum DeliveryStatus { sending, sent, delivered, failed }
 
+enum ChannelPeerState { pending, live, replayed, delivered }
+
+class ChannelPeerAck {
+  ChannelPeerAck({
+    required this.keyHex,
+    required this.name,
+    required this.state,
+  });
+
+  final String keyHex;
+  final String name;
+  ChannelPeerState state;
+
+  ChannelPeerAck copyWith({ChannelPeerState? state, String? name}) {
+    return ChannelPeerAck(
+      keyHex: keyHex,
+      name: name ?? this.name,
+      state: state ?? this.state,
+    );
+  }
+}
+
 class ChatMessage {
   ChatMessage({
     required this.id,
@@ -24,7 +46,10 @@ class ChatMessage {
     this.hopCount,
     this.snr,
     this.senderName,
-  });
+    this.catchUpId,
+    this.catchUp = false,
+    List<ChannelPeerAck>? channelAcks,
+  }) : channelAcks = channelAcks ?? [];
 
   final String id;
   final ChatKind kind;
@@ -44,8 +69,51 @@ class ChatMessage {
   final int? hopCount;
   final double? snr;
   final String? senderName;
+  final int? catchUpId;
+  final bool catchUp;
+  final List<ChannelPeerAck> channelAcks;
 
   bool get isPulling => pullTotal != null;
+  bool get hasChannelTracking => channelAcks.isNotEmpty;
+  int get channelKnown => channelAcks.length;
+  int get channelGot => channelAcks
+      .where((a) =>
+          a.state == ChannelPeerState.live ||
+          a.state == ChannelPeerState.delivered)
+      .length;
+  int get channelPending => channelAcks
+      .where((a) =>
+          a.state == ChannelPeerState.pending ||
+          a.state == ChannelPeerState.replayed)
+      .length;
+
+  String get channelTrackLabel {
+    if (!hasChannelTracking) return '';
+    if (channelPending == 0) {
+      return 'Flood · $channelGot/$channelKnown gehört';
+    }
+    final missing = channelAcks
+        .where((a) =>
+            a.state == ChannelPeerState.pending ||
+            a.state == ChannelPeerState.replayed)
+        .map((a) => a.name)
+        .join(', ');
+    return 'Flood · $channelGot/$channelKnown gehört ($missing fehlt)';
+  }
+
+  ChatMessage withPeerAck(String keyOrPrefixHex, ChannelPeerState state) {
+    final needle = keyOrPrefixHex.toLowerCase();
+    final next = <ChannelPeerAck>[];
+    for (final a in channelAcks) {
+      final hex = a.keyHex.toLowerCase();
+      if (hex.startsWith(needle) || needle.startsWith(hex)) {
+        next.add(a.copyWith(state: state));
+      } else {
+        next.add(a);
+      }
+    }
+    return copyWith(channelAcks: next);
+  }
 
   ChatMessage copyWith({
     String? text,
@@ -59,6 +127,9 @@ class ChatMessage {
     int? hopCount,
     double? snr,
     String? senderName,
+    int? catchUpId,
+    bool? catchUp,
+    List<ChannelPeerAck>? channelAcks,
   }) {
     return ChatMessage(
       id: id,
@@ -77,6 +148,9 @@ class ChatMessage {
       hopCount: hopCount ?? this.hopCount,
       snr: snr ?? this.snr,
       senderName: senderName ?? this.senderName,
+      catchUpId: catchUpId ?? this.catchUpId,
+      catchUp: catchUp ?? this.catchUp,
+      channelAcks: channelAcks ?? this.channelAcks,
     );
   }
 }
@@ -103,6 +177,10 @@ class Conversation {
   int unread = 0;
 
   ChatMessage? get lastMessage => messages.isEmpty ? null : messages.last;
+
+  bool get hasPendingCatchUp => messages.any(
+        (m) => m.outgoing && m.hasChannelTracking && m.channelPending > 0,
+      );
 
   String? get preview {
     final m = lastMessage;

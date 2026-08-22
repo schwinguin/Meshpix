@@ -4,7 +4,9 @@ import 'dart:typed_data';
 import '../models/channel.dart';
 import '../models/contact.dart';
 import '../models/device.dart';
+import '../codec/limits.dart';
 import '../models/repeater.dart';
+import '../transfer/catchup.dart';
 import '../transfer/protocol.dart';
 import 'constants.dart';
 import 'control.dart';
@@ -368,7 +370,11 @@ IncomingPacket _parseChannelData(Uint8List d, {required int meshPixDataType}) {
   final dataType = readU16(d, 6);
   final len = d[8];
   final payload = d.length >= 9 + len ? d.sublist(9, 9 + len) : d.sublist(9);
-  final kind = dataType == meshPixDataType ? IncomingKind.meshPix : IncomingKind.unknown;
+  final kind = dataType == meshPixDataType
+      ? IncomingKind.meshPix
+      : dataType == kMeshPixCatchType
+          ? IncomingKind.catchUp
+          : IncomingKind.unknown;
   return IncomingPacket(
     kind: kind,
     fromChannel: true,
@@ -389,10 +395,19 @@ IncomingPacket _parseRawData(Uint8List d, {required int meshPixDataType}) {
   final rssi = readI8(d[2]);
   final payload = d.sublist(4);
   final looksMp = payload.length >= 2 && payload[0] == 0x4D && payload[1] == 0x50;
+  final looksCatch = looksLikeCatchUp(payload);
   return IncomingPacket(
-    kind: looksMp ? IncomingKind.meshPix : IncomingKind.unknown,
+    kind: looksCatch
+        ? IncomingKind.catchUp
+        : looksMp
+            ? IncomingKind.meshPix
+            : IncomingKind.unknown,
     fromChannel: false,
-    dataType: looksMp ? meshPixDataType : null,
+    dataType: looksCatch
+        ? kMeshPixCatchType
+        : looksMp
+            ? meshPixDataType
+            : null,
     payload: payload,
     snr: snr,
     rssi: rssi,

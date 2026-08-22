@@ -188,7 +188,11 @@ class _ConvoList extends StatelessWidget {
             title: Text(c.title),
             subtitle: Text(
               c.preview ??
-                  (c.isChannel ? 'Channel · Preview + Text' : 'Direct Message'),
+                  (c.isChannel
+                      ? (c.hasPendingCatchUp
+                          ? 'Channel · Nachreichen offen'
+                          : 'Channel · Flood ohne ACK')
+                      : 'Direct Message'),
             ),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,

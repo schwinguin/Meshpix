@@ -24,6 +24,7 @@ String formatHops({int? hopCount, double? snr}) {
 }
 
 String deliveryLabel(ChatMessage m) {
+  if (m.hasChannelTracking) return m.channelTrackLabel;
   switch (m.delivery) {
     case DeliveryStatus.sending:
       return 'sendet…';
@@ -33,5 +34,18 @@ String deliveryLabel(ChatMessage m) {
       return m.rttMs != null ? 'zugestellt · ${m.rttMs} ms' : 'zugestellt';
     case DeliveryStatus.failed:
       return 'fehlgeschlagen';
+  }
+}
+
+String channelPeerLabel(ChannelPeerState s) {
+  switch (s) {
+    case ChannelPeerState.pending:
+      return 'fehlt';
+    case ChannelPeerState.live:
+      return 'gehört';
+    case ChannelPeerState.replayed:
+      return 'nachgereicht';
+    case ChannelPeerState.delivered:
+      return 'da';
   }
 }

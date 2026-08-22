@@ -60,15 +60,18 @@ class SimMesh {
   }) {
     for (final radio in _radios.values) {
       if (radio.identity.id == fromId) continue;
+      if (!radio.reachable) continue;
       if (toId != null && radio.identity.id != toId) continue;
       radio._emit(packet);
     }
   }
 
   void floodAdvert(SimRadio from) {
+    if (!from.reachable) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     for (final radio in _radios.values) {
       if (radio.identity.id == from.identity.id) continue;
+      if (!radio.reachable) continue;
       radio._hearAdvert(
         MeshContact(
           publicKey: from.identity.publicKey,
@@ -122,6 +125,7 @@ class SimRadio implements PacketRadio, CompanionControl {
   final _incoming = StreamController<IncomingPacket>.broadcast();
   final _notices = StreamController<CompanionNotice>.broadcast();
   final _rng = Random();
+  bool reachable = true;
 
   @override
   Stream<IncomingPacket> get incoming => _incoming.stream;
@@ -207,7 +211,9 @@ class SimRadio implements PacketRadio, CompanionControl {
   }) async {
     final kind = dataType == kMeshPixDataType
         ? IncomingKind.meshPix
-        : IncomingKind.unknown;
+        : dataType == kMeshPixCatchType
+            ? IncomingKind.catchUp
+            : IncomingKind.unknown;
     final packet = IncomingPacket(
       kind: kind,
       fromChannel: destination.isPublicChannel,

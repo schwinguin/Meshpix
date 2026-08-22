@@ -6,6 +6,7 @@ import '../codec/limits.dart';
 import '../codec/mp1.dart';
 import '../companion/constants.dart';
 import '../companion/control.dart';
+import 'catchup.dart';
 import 'protocol.dart';
 
 class TransferEvent {
@@ -25,6 +26,7 @@ class TransferEvent {
     this.snr,
     this.timestamp,
     this.receipt,
+    this.catchUp,
   });
   final String message;
   final DecodedImage? image;
@@ -41,6 +43,7 @@ class TransferEvent {
   final double? snr;
   final int? timestamp;
   final TxReceipt? receipt;
+  final CatchUpPacket? catchUp;
 }
 
 class _Offer {
@@ -171,6 +174,23 @@ class TransferEngine {
     return done.future;
   }
 
+  Future<void> sendCatchUp({
+    required RadioDestination destination,
+    required CatchUpPacket packet,
+  }) {
+    final done = Completer<TxReceipt?>();
+    _enqueue(
+      QueuedTx(
+        priority: TxPriority.control,
+        payload: encodeCatchUp(packet),
+        destination: destination,
+        dataType: kMeshPixCatchType,
+        done: done,
+      ),
+    );
+    return done.future.then((_) {});
+  }
+
   Future<void> requestUpgrade(int transferId, RadioDestination from) async {
     final pkt = codec.pull(transferId);
     _enqueue(
@@ -221,9 +241,12 @@ class TransferEngine {
             }
             await radio.sendDatagram(
               destination: next.destination,
-              dataType: kMeshPixDataType,
+              dataType: next.dataType ?? kMeshPixDataType,
               payload: next.payload,
             );
+            if (!(next.done?.isCompleted ?? true)) {
+              next.done!.complete(null);
+            }
           }
         } catch (e) {
           if (!(next.done?.isCompleted ?? true)) {
@@ -259,6 +282,23 @@ class TransferEngine {
           hopCount: packet.hopCount,
           snr: packet.snr,
           timestamp: packet.timestamp,
+        ),
+      );
+      return;
+    }
+    if (packet.kind == IncomingKind.catchUp ||
+        packet.dataType == kMeshPixCatchType ||
+        (packet.payload != null && looksLikeCatchUp(packet.payload!))) {
+      final parsed = packet.payload == null ? null : decodeCatchUp(packet.payload!);
+      if (parsed == null) return;
+      _events.add(
+        TransferEvent(
+          parsed.text ?? '',
+          outgoing: false,
+          fromChannel: packet.fromChannel,
+          channelIdx: parsed.channelIdx,
+          senderPrefix: packet.senderPrefix ?? parsed.senderPrefix,
+          catchUp: parsed,
         ),
       );
       return;

@@ -41,12 +41,14 @@ class QueuedTx {
     required this.payload,
     required this.destination,
     this.done,
+    this.dataType,
   });
 
   final TxPriority priority;
   final Uint8List payload;
   final RadioDestination destination;
   final Completer<TxReceipt?>? done;
+  final int? dataType;
 }
 
 enum DestKind { channelFlood, directDm }
@@ -69,7 +71,7 @@ class RadioDestination {
   bool get isPublicChannel => kind == DestKind.channelFlood;
 }
 
-enum IncomingKind { text, meshPix, unknown }
+enum IncomingKind { text, meshPix, catchUp, unknown }
 
 class IncomingPacket {
   IncomingPacket({

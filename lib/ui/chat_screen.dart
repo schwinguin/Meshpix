@@ -39,7 +39,9 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Text(conv.title),
             Text(
-              conv.isChannel ? 'Channel · Preview + Text' : 'Direct · Nachzug möglich',
+              conv.isChannel
+                  ? 'Channel · Flood ohne ACK'
+                  : 'Direct · Nachzug möglich',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -73,6 +75,28 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          if (conv.isChannel)
+            Material(
+              color: const Color(0xFF2A2D36),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Flood hat keine Empfangsbestätigung. Wer off-grid war, bekommt die Nachricht per DM nachgereicht, sobald er wieder wirbt.',
+                        style: TextStyle(fontSize: 12, color: meshPaper),
+                      ),
+                    ),
+                    if (conv.hasPendingCatchUp)
+                      TextButton(
+                        onPressed: () => app.replayChannel(),
+                        child: const Text('Nachreichen'),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
@@ -167,6 +191,14 @@ class _Bubble extends StatelessWidget {
                   style: const TextStyle(color: meshAmber, fontSize: 12),
                 ),
               ),
+            if (message.catchUp && !message.outgoing)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Text(
+                  'nachgereicht',
+                  style: TextStyle(fontSize: 11, color: meshAmber),
+                ),
+              ),
             if (message.text != null && message.text!.isNotEmpty) ...[
               if (message.image != null) const SizedBox(height: 8),
               Text(message.text!),
@@ -180,6 +212,15 @@ class _Bubble extends StatelessWidget {
               ].where((s) => s.isNotEmpty).join(' · '),
               style: const TextStyle(fontSize: 11, color: meshPaper),
             ),
+            if (message.hasChannelTracking) ...[
+              const SizedBox(height: 4),
+              Text(
+                message.channelAcks
+                    .map((a) => '${a.name} ${channelPeerLabel(a.state)}')
+                    .join(' · '),
+                style: const TextStyle(fontSize: 11, color: meshPaper),
+              ),
+            ],
             if (message.isPulling) ...[
               const SizedBox(height: 8),
               ClipRRect(

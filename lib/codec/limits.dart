@@ -1,6 +1,9 @@
 /// MeshPix application `data_type` in the MeshCore developer range (0xFF00–0xFFFE).
 const int kMeshPixDataType = 0xFF50;
 
+/// Channel catch-up / receipt datagrams (store-and-forward for off-grid peers).
+const int kMeshPixCatchType = 0xFF51;
+
 /// Channel datagram payload cap from companion protocol (`MAX_CHANNEL_DATA_LENGTH`).
 const int kMaxDatagramPayload = 163;
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -14,6 +15,7 @@ import '../models/device.dart';
 import '../models/repeater.dart';
 import '../models/uri_card.dart';
 import '../sim/sim_mesh.dart';
+import '../transfer/catchup.dart';
 import '../transfer/engine.dart';
 import '../transfer/protocol.dart';
 
@@ -315,18 +317,28 @@ class AppController extends ChangeNotifier {
   Future<void> sendText(String text) async {
     final conv = _open;
     if (conv == null || text.trim().isEmpty) return;
+    final trimmed = text.trim();
+    final ts = DateTime.now();
+    final prefix = _selfPrefix();
+    final catchId = conv.isChannel && prefix != null
+        ? catchUpMsgId(
+            '${conv.channelIdx ?? 0}|${_hex(prefix)}|${ts.millisecondsSinceEpoch ~/ 1000}|$trimmed',
+          )
+        : null;
     final msg = ChatMessage(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       kind: ChatKind.text,
       outgoing: true,
-      timestamp: DateTime.now(),
-      text: text.trim(),
+      timestamp: ts,
+      text: trimmed,
       delivery: conv.isChannel ? DeliveryStatus.sent : DeliveryStatus.sending,
+      catchUpId: catchId,
+      channelAcks: conv.isChannel ? _acksForSend() : null,
     );
     conv.messages.add(msg);
     notifyListeners();
     try {
-      final receipt = await active.engine.sendText(destFor(conv), text.trim());
+      final receipt = await active.engine.sendText(destFor(conv), trimmed);
       final idx = conv.messages.indexWhere((m) => m.id == msg.id);
       if (idx >= 0) {
         conv.messages[idx] = conv.messages[idx].copyWith(
@@ -382,8 +394,42 @@ class AppController extends ChangeNotifier {
         timestamp: DateTime.now(),
         image: local,
         transferId: sent.transferId,
+        catchUpId: conv.isChannel
+            ? catchUpMsgId(
+                '${conv.channelIdx ?? 0}|${_hex(_selfPrefix() ?? Uint8List(0))}|img|${sent.transferId}',
+              )
+            : null,
+        channelAcks: conv.isChannel ? _acksForSend() : null,
       ),
     );
+    notifyListeners();
+  }
+
+  void setSimReachable(String radioId, bool reachable) {
+    final session = sessions[radioId];
+    final radio = session?.radio;
+    if (radio is! SimRadio) return;
+    radio.reachable = reachable;
+    if (reachable && session != null) {
+      unawaited(radio.sendSelfAdvert(flood: true));
+      unawaited(_requestCatchUp(session));
+    }
+    notifyListeners();
+  }
+
+  bool isSimReachable(String radioId) {
+    final radio = sessions[radioId]?.radio;
+    return radio is SimRadio && radio.reachable;
+  }
+
+  Future<void> replayChannel() async {
+    final session = active;
+    for (final c in contacts.where((c) => c.isChat)) {
+      if (_peerLikelyOnline(c)) {
+        await _replayPendingTo(session, c);
+      }
+    }
+    status = 'Channel-Nachreichen gesendet';
     notifyListeners();
   }
 
@@ -583,6 +629,9 @@ class AppController extends ChangeNotifier {
         if (n.contact != null) {
           _ensureConvo(session, n.contact!);
           status = 'Advert: ${n.contact!.name}';
+          if (n.contact!.isChat) {
+            unawaited(_replayPendingTo(session, n.contact!));
+          }
         }
       case CompanionNoticeKind.status:
         status = n.statusSummary;
@@ -706,6 +755,10 @@ class AppController extends ChangeNotifier {
   }
 
   void _onEvent(NodeSession session, TransferEvent e) {
+    if (e.catchUp != null) {
+      _handleCatchUp(session, e);
+      return;
+    }
     if (e.outgoing && e.image != null) {
       notifyListeners();
       return;
@@ -822,6 +875,239 @@ class AppController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  List<ChannelPeerAck> _acksForSend() {
+    return contacts
+        .where((c) => c.isChat)
+        .map(
+          (c) => ChannelPeerAck(
+            keyHex: c.keyHex,
+            name: c.name,
+            state: _peerLikelyOnline(c)
+                ? ChannelPeerState.live
+                : ChannelPeerState.pending,
+          ),
+        )
+        .toList();
+  }
+
+  bool _peerLikelyOnline(MeshContact c) {
+    if (mode == AppMode.simulator) {
+      for (final s in sessions.values) {
+        final r = s.radio;
+        if (r is SimRadio && _keyEq(r.identity.publicKey, c.publicKey)) {
+          return r.reachable;
+        }
+      }
+      return false;
+    }
+    final heard = c.lastHeard;
+    if (heard == null) return false;
+    return DateTime.now().difference(heard) < const Duration(minutes: 2);
+  }
+
+  Uint8List? _selfPrefix() {
+    final key = self?.publicKey;
+    if (key == null || key.isEmpty) return null;
+    return Uint8List.fromList(key.take(6).toList());
+  }
+
+  Uint8List _selfPrefixOf(NodeSession session) {
+    final key = session.companion?.self.publicKey;
+    if (key == null || key.isEmpty) return Uint8List(6);
+    return Uint8List.fromList(key.take(6).toList());
+  }
+
+  String _hex(List<int> bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  MeshContact? _contactForPrefix(NodeSession session, Uint8List? prefix) {
+    if (prefix == null) return null;
+    for (final c in session.companion?.contacts ?? const <MeshContact>[]) {
+      if (_keyEq(c.publicKey, prefix)) return c;
+    }
+    return null;
+  }
+
+  String? _keyHexForPrefix(NodeSession session, Uint8List? prefix) {
+    if (prefix == null || prefix.isEmpty) return null;
+    return _contactForPrefix(session, prefix)?.keyHex ?? _hex(prefix);
+  }
+
+  void _handleCatchUp(NodeSession session, TransferEvent e) {
+    final pkt = e.catchUp!;
+    if (pkt.isReceipt) {
+      _applyReceipt(session, e);
+      return;
+    }
+    if (pkt.isSyncReq) {
+      final peer = _contactForPrefix(session, e.senderPrefix);
+      if (peer != null && peer.isChat) {
+        unawaited(_replayPendingTo(session, peer));
+      }
+      return;
+    }
+    _ingestCatchUpText(session, e);
+  }
+
+  void _ingestCatchUpText(NodeSession session, TransferEvent e) {
+    final pkt = e.catchUp!;
+    final conv = session.conversations
+            .where((c) => c.isChannel && c.channelIdx == pkt.channelIdx)
+            .firstOrNull ??
+        session.conversations.where((c) => c.isChannel).firstOrNull;
+    if (conv == null) return;
+    final senderName = _nameForPrefix(session, e.senderPrefix) ??
+        _nameForPrefix(session, pkt.senderPrefix);
+    final dup = conv.messages.any((m) {
+      if (m.catchUpId != null && m.catchUpId == pkt.msgId) return true;
+      if (pkt.text != null &&
+          pkt.text!.isNotEmpty &&
+          m.text == pkt.text &&
+          !m.outgoing) {
+        final dt =
+            (m.timestamp.millisecondsSinceEpoch ~/ 1000 - pkt.timestamp).abs();
+        if (dt <= 300) return true;
+      }
+      return false;
+    });
+    if (!dup) {
+      conv.messages.add(
+        ChatMessage(
+          id: 'cu-${pkt.msgId}',
+          kind: ChatKind.text,
+          outgoing: false,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(
+            pkt.timestamp * 1000,
+            isUtc: true,
+          ).toLocal(),
+          text: pkt.text,
+          catchUpId: pkt.msgId,
+          catchUp: true,
+          senderName: senderName,
+        ),
+      );
+      if (!identical(conv, _open) || session.id != activeNodeId) {
+        conv.unread += 1;
+      }
+    }
+    final dest = e.senderPrefix ?? pkt.senderPrefix;
+    unawaited(_sendReceipt(session, dest, pkt));
+    notifyListeners();
+  }
+
+  Future<void> _sendReceipt(
+    NodeSession session,
+    Uint8List destPrefix,
+    CatchUpPacket orig,
+  ) async {
+    if (destPrefix.isEmpty) return;
+    final pkt = CatchUpPacket(
+      kind: CatchKind.receipt,
+      channelIdx: orig.channelIdx,
+      msgId: orig.msgId,
+      timestamp: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      senderPrefix: _selfPrefixOf(session),
+    );
+    try {
+      await session.engine.sendCatchUp(
+        destination: RadioDestination.dm(destPrefix),
+        packet: pkt,
+      );
+    } catch (_) {}
+  }
+
+  void _applyReceipt(NodeSession session, TransferEvent e) {
+    final pkt = e.catchUp!;
+    final fromHex = _keyHexForPrefix(session, e.senderPrefix);
+    if (fromHex == null) return;
+    var changed = false;
+    for (final conv in session.conversations) {
+      if (!conv.isChannel) continue;
+      for (var i = 0; i < conv.messages.length; i++) {
+        final m = conv.messages[i];
+        if (!m.outgoing || m.catchUpId != pkt.msgId) continue;
+        conv.messages[i] = m.withPeerAck(fromHex, ChannelPeerState.delivered);
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
+  Future<void> _replayPendingTo(NodeSession session, MeshContact peer) async {
+    if (mode == AppMode.simulator && !_peerLikelyOnline(peer)) return;
+    final dest = RadioDestination.dm(
+      Uint8List.fromList(peer.publicKey.take(6).toList()),
+      path: peer.hasPath ? Uint8List.fromList(peer.outPath!) : null,
+    );
+    var sent = 0;
+    for (final conv in session.conversations) {
+      if (!conv.isChannel) continue;
+      for (var i = 0; i < conv.messages.length; i++) {
+        if (sent >= 20) {
+          notifyListeners();
+          return;
+        }
+        final m = conv.messages[i];
+        if (!m.outgoing || m.catchUpId == null || !m.hasChannelTracking) {
+          continue;
+        }
+        ChannelPeerAck? ack;
+        for (final a in m.channelAcks) {
+          final hex = a.keyHex.toLowerCase();
+          final needle = peer.keyHex.toLowerCase();
+          if (hex.startsWith(needle) || needle.startsWith(hex)) {
+            ack = a;
+            break;
+          }
+        }
+        if (ack == null ||
+            ack.state == ChannelPeerState.delivered ||
+            ack.state == ChannelPeerState.live) {
+          continue;
+        }
+        final text = m.kind == ChatKind.image ? '📷 Bild' : (m.text ?? '');
+        final pkt = CatchUpPacket(
+          kind: CatchKind.text,
+          channelIdx: conv.channelIdx ?? 0,
+          msgId: m.catchUpId!,
+          timestamp: m.timestamp.millisecondsSinceEpoch ~/ 1000,
+          senderPrefix: _selfPrefixOf(session),
+          text: text,
+        );
+        try {
+          await session.engine.sendCatchUp(destination: dest, packet: pkt);
+          conv.messages[i] =
+              m.withPeerAck(peer.keyHex, ChannelPeerState.replayed);
+          sent++;
+        } catch (_) {}
+      }
+    }
+    if (sent > 0) notifyListeners();
+  }
+
+  Future<void> _requestCatchUp(NodeSession session) async {
+    final prefix = _selfPrefixOf(session);
+    for (final c in session.companion?.contacts ?? const <MeshContact>[]) {
+      if (!c.isChat) continue;
+      if (!_peerLikelyOnline(c)) continue;
+      final pkt = CatchUpPacket(
+        kind: CatchKind.syncReq,
+        channelIdx: 0,
+        msgId: 0,
+        timestamp: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        senderPrefix: prefix,
+      );
+      try {
+        await session.engine.sendCatchUp(
+          destination: RadioDestination.dm(
+            Uint8List.fromList(c.publicKey.take(6).toList()),
+          ),
+          packet: pkt,
+        );
+      } catch (_) {}
+    }
   }
 
   void _disposeSessions() {
