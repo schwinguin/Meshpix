@@ -70,6 +70,7 @@ class BleTransport implements CompanionTransport {
 
   final BluetoothDevice _device;
   BluetoothCharacteristic? _rx;
+  bool _writeNoResponse = false;
   final _frames = StreamController<Uint8List>.broadcast();
   StreamSubscription<List<int>>? _notifySub;
 
@@ -98,8 +99,14 @@ class BleTransport implements CompanionTransport {
       if (id == MeshCoreUuids.rxWrite) _rx = c;
       if (id == MeshCoreUuids.txNotify) tx = c;
     }
-    if (_rx == null || tx == null) {
+    final rx = _rx;
+    if (rx == null || tx == null) {
       throw StateError('RX/TX-Characteristic fehlt');
+    }
+    final rxProps = rx.properties;
+    _writeNoResponse = rxProps.writeWithoutResponse;
+    if (!_writeNoResponse && !rxProps.write) {
+      throw StateError('RX-Characteristic unterstützt kein Schreiben');
     }
     await tx.setNotifyValue(true);
     _notifySub = tx.onValueReceived.listen((value) {
@@ -112,7 +119,7 @@ class BleTransport implements CompanionTransport {
   Future<void> write(Uint8List frame) async {
     final rx = _rx;
     if (rx == null) throw StateError('nicht verbunden');
-    await rx.write(frame, withoutResponse: true);
+    await rx.write(frame, withoutResponse: _writeNoResponse);
   }
 
   @override

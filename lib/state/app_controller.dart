@@ -81,6 +81,7 @@ class AppController extends ChangeNotifier {
   BleTransport? _bleTransport;
   BleScanner? _scanner;
   StreamSubscription<List<BleScanHit>>? _scanSub;
+  bool _connecting = false;
 
   NodeSession get active => sessions[activeNodeId]!;
 
@@ -278,6 +279,8 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> connectBle(BleScanHit hit) async {
+    if (_connecting) return;
+    _connecting = true;
     error = null;
     status = 'Verbinde mit ${hit.name} …';
     notifyListeners();
@@ -316,6 +319,8 @@ class AppController extends ChangeNotifier {
       error = 'Kopplung fehlgeschlagen: $e';
       status = null;
       notifyListeners();
+    } finally {
+      _connecting = false;
     }
   }
 
