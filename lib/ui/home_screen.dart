@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/chat.dart';
 import '../state/app_controller.dart';
 import 'chat_screen.dart';
 import 'contacts_screen.dart';

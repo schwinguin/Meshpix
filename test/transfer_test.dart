@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meshpix/codec/limits.dart';
 import 'package:meshpix/codec/mp1.dart';
 import 'package:meshpix/codec/rgba.dart';
+import 'package:meshpix/companion/control.dart';
 import 'package:meshpix/transfer/engine.dart';
 import 'package:meshpix/transfer/protocol.dart';
 
@@ -20,11 +21,12 @@ class FakeRadio implements PacketRadio {
   Stream<IncomingPacket> get incoming => _incoming.stream;
 
   @override
-  Future<void> sendText({
+  Future<TxReceipt?> sendText({
     required RadioDestination destination,
     required String text,
   }) async {
     sentTexts.add(text);
+    return const TxReceipt();
   }
 
   @override

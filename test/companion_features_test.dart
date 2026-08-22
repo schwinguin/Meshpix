@@ -9,7 +9,6 @@ import 'package:meshpix/models/chat.dart';
 import 'package:meshpix/models/contact.dart';
 import 'package:meshpix/models/device.dart';
 import 'package:meshpix/models/uri_card.dart';
-import 'package:meshpix/sim/sim_mesh.dart';
 import 'package:meshpix/state/app_controller.dart';
 
 void main() {
@@ -38,8 +37,8 @@ void main() {
       ..addByte(0)
       ..addByte(0)
       ..addByte(0)
-      ..add([0x55, 0x46, 0x0D, 0x00]) // 869525
-      ..add([0x90, 0xD0, 0x03, 0x00]) // 250000
+      ..add([869525 & 0xFF, (869525 >> 8) & 0xFF, (869525 >> 16) & 0xFF, 0])
+      ..add([250000 & 0xFF, (250000 >> 8) & 0xFF, (250000 >> 16) & 0xFF, 0])
       ..addByte(11)
       ..addByte(5)
       ..add('Heltec'.codeUnits);
