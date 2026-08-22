@@ -284,6 +284,15 @@ class AppController extends ChangeNotifier {
     error = null;
     status = 'Verbinde mit ${hit.name} …';
     notifyListeners();
+    // Beim ersten Pairing beantwortet der User einen System-PIN-Dialog;
+    // solange blockiert das Gerät. Stattdessen einen Abbruch mit roter
+    // Fehlermeldung zu zeigen, sagen wir, was zu tun ist.
+    final pinHint = Timer(const Duration(seconds: 10), () {
+      if (status == 'Verbinde mit ${hit.name} …') {
+        status = 'PIN-Dialog? PIN eingeben (0000 oder 1234)';
+        notifyListeners();
+      }
+    });
     await stopScan();
     try {
       _bleTransport = BleTransport(hit.device);
@@ -316,10 +325,13 @@ class AppController extends ChangeNotifier {
       status = 'Verbunden mit $name';
       notifyListeners();
     } catch (e) {
-      error = 'Kopplung fehlgeschlagen: $e';
+      error = e.toString().contains('Timed out')
+          ? 'Kopplung fehlgeschlagen: Timeout — PIN-Dialog unbeantwortet? Erneut versuchen.'
+          : 'Kopplung fehlgeschlagen: $e';
       status = null;
       notifyListeners();
     } finally {
+      pinHint.cancel();
       _connecting = false;
     }
   }

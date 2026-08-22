@@ -69,6 +69,10 @@ class BleTransport implements CompanionTransport {
   BleTransport(this._device);
 
   final BluetoothDevice _device;
+
+  /// Beim ersten Pairing blockiert das Gerät GATT-Writes, bis der
+  /// System-PIN-Dialog beantwortet ist — 60 s Geduld, kein 15-s-Abbruch.
+  static const int opTimeoutSec = 60;
   BluetoothCharacteristic? _rx;
   bool _writeNoResponse = false;
   final _frames = StreamController<Uint8List>.broadcast();
@@ -78,7 +82,7 @@ class BleTransport implements CompanionTransport {
   Stream<Uint8List> get frames => _frames.stream;
 
   Future<void> connect() async {
-    await _device.connect(timeout: const Duration(seconds: 15));
+    await _device.connect(timeout: const Duration(seconds: opTimeoutSec));
     try {
       await _device.requestMtu(185);
     } catch (_) {}
@@ -119,7 +123,7 @@ class BleTransport implements CompanionTransport {
   Future<void> write(Uint8List frame) async {
     final rx = _rx;
     if (rx == null) throw StateError('nicht verbunden');
-    await rx.write(frame, withoutResponse: _writeNoResponse);
+    await rx.write(frame, withoutResponse: _writeNoResponse, timeout: opTimeoutSec);
   }
 
   @override
