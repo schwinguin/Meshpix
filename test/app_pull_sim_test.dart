@@ -41,8 +41,11 @@ void main() {
         .firstWhere((c) => !c.isChannel)
         .messages
         .firstWhere((m) => m.transferId == encoded.transferId);
-    debugPrint('Ben Preview: ${previewMsg.text}, canPull=${previewMsg.canPull}');
+    debugPrint('Ben Preview: canPull=${previewMsg.canPull}');
     expect(previewMsg.canPull, isTrue);
+    // Empfänger-Blase zeigt nur Bild + „Nachladen", keinen Info-Text.
+    expect(previewMsg.text, isNull,
+        reason: 'Kein Summary-Text in der Empfänger-Blase');
 
     // Ben tippt "Nachladen" (Controller-Pfad, inkl. destFor(openConversation)).
     app.switchNode('ben');

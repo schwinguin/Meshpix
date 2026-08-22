@@ -364,7 +364,6 @@ class AppController extends ChangeNotifier {
         timestamp: DateTime.now(),
         image: e.image,
         transferId: e.transferId,
-        text: e.message,
         canPull: (e.image?.upgradeChunks ?? 0) > 0 && !e.fromChannel,
       );
       if (existing >= 0) {
