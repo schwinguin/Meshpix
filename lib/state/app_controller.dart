@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -914,7 +913,8 @@ class AppController extends ChangeNotifier {
   }
 
   Uint8List _selfPrefixOf(NodeSession session) {
-    final key = session.companion?.self.publicKey;
+    final self = session.companion?.self;
+    final key = self?.publicKey;
     if (key == null || key.isEmpty) return Uint8List(6);
     return Uint8List.fromList(key.take(6).toList());
   }
