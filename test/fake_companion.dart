@@ -88,17 +88,6 @@ class FakeCompanion implements PacketRadio, CompanionControl {
     emit(CompanionNotice.cli(prefix: prefix, cliText: reply));
   }
 
-  @override
-  Future<void> setChannel(int idx, String name, Uint8List secret) async {
-    final i = channels.indexWhere((c) => c.index == idx);
-    final ch = MeshChannel(index: idx, name: name, secret: List<int>.from(secret));
-    if (i >= 0) {
-      channels[i] = ch;
-    } else {
-      channels.add(ch);
-    }
-  }
-
   // -- No-Op-Reste des Interfaces ------------------------------------
 
   @override
@@ -153,7 +142,30 @@ class FakeCompanion implements PacketRadio, CompanionControl {
   Future<void> requestTelemetry(MeshContact contact) async {}
 
   @override
-  Future<void> tracePath(MeshContact contact) async {}
+  Future<void> tracePath(MeshContact contact, {int? tag, int? flags}) async {}
+
+  @override
+  Future<void> setChannel(int idx, String name, Uint8List secret) async {
+    if (name.isEmpty) {
+      channels.removeWhere((c) => c.index == idx);
+      return;
+    }
+    final i = channels.indexWhere((c) => c.index == idx);
+    final ch = MeshChannel(index: idx, name: name, secret: List<int>.from(secret));
+    if (i >= 0) {
+      channels[i] = ch;
+    } else {
+      channels.add(ch);
+    }
+  }
+
+  @override
+  Future<void> deleteChannel(int idx) async {
+    channels.removeWhere((c) => c.index == idx);
+  }
+
+  @override
+  Future<void> factoryReset() async {}
 
   Future<void> dispose() async {
     await _incoming.close();

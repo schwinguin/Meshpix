@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../models/channel.dart';
 import '../models/contact.dart';
 import '../models/device.dart';
+import '../models/signal.dart';
 import '../models/repeater.dart';
 
 class TxReceipt {
@@ -30,7 +31,7 @@ class CompanionNotice {
     this.permissions,
     this.cliText,
     this.repeaterStatus,
-    this.traceSummary,
+    this.trace,
   });
 
   CompanionNotice.advert(this.contact)
@@ -44,7 +45,7 @@ class CompanionNotice {
         permissions = null,
         cliText = null,
         repeaterStatus = null,
-        traceSummary = null;
+        trace = null;
 
   CompanionNotice.ack({required int this.ackCode, required int this.rttMs})
       : kind = CompanionNoticeKind.ack,
@@ -56,7 +57,7 @@ class CompanionNotice {
         permissions = null,
         cliText = null,
         repeaterStatus = null,
-        traceSummary = null;
+        trace = null;
 
   CompanionNotice.status({
     required List<int> prefix,
@@ -71,7 +72,7 @@ class CompanionNotice {
         isAdmin = null,
         permissions = null,
         cliText = null,
-        traceSummary = null;
+        trace = null;
 
   CompanionNotice.pathUpdated(this.pubkey)
       : kind = CompanionNoticeKind.pathUpdated,
@@ -84,7 +85,7 @@ class CompanionNotice {
         permissions = null,
         cliText = null,
         repeaterStatus = null,
-        traceSummary = null;
+        trace = null;
 
   CompanionNotice.login({
     required List<int> prefix,
@@ -97,10 +98,10 @@ class CompanionNotice {
         rttMs = null,
         statusSummary = null,
         pubkey = prefix,
-        loginOk = ok,
+        loginOk = null,
         cliText = null,
         repeaterStatus = null,
-        traceSummary = null;
+        trace = null;
 
   CompanionNotice.cli({required List<int> prefix, required this.cliText})
       : kind = CompanionNoticeKind.cli,
@@ -113,9 +114,9 @@ class CompanionNotice {
         isAdmin = null,
         permissions = null,
         repeaterStatus = null,
-        traceSummary = null;
+        trace = null;
 
-  CompanionNotice.trace({required this.traceSummary, List<int>? prefix})
+  CompanionNotice.trace({required this.trace, List<int>? prefix})
       : kind = CompanionNoticeKind.trace,
         contact = null,
         ackCode = null,
@@ -139,7 +140,7 @@ class CompanionNotice {
   final int? permissions;
   final String? cliText;
   final RepeaterStatus? repeaterStatus;
-  final String? traceSummary;
+  final TraceResult? trace;
 }
 
 enum CompanionNoticeKind {
@@ -179,6 +180,11 @@ abstract class CompanionControl {
   Future<void> sendCli(MeshContact contact, String command);
   Future<void> requestStatus(MeshContact contact);
   Future<void> requestTelemetry(MeshContact contact);
-  Future<void> tracePath(MeshContact contact);
+  Future<void> tracePath(MeshContact contact, {int? tag, int? flags});
   Future<void> setChannel(int idx, String name, Uint8List secret);
+  /// Kanal löschen: `setChannel(idx, "", 0…0)` — leeres Name + Null-Secret
+  /// verwandelt den Slot in einen leeren "dead" Slot.
+  Future<void> deleteChannel(int idx);
+  /// `[0x33, "reset"]` — das Gerät startet neu, ohne OK-Frame.
+  Future<void> factoryReset();
 }

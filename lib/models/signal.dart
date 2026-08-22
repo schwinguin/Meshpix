@@ -1,5 +1,53 @@
 import 'contact.dart';
 
+/// Ergebnis eines Trace-Pings (PUSH_CODE_TRACE_DATA, 0x89).
+///
+/// Layout: `[0x89, 0, path_len, flags, tag(4), auth(4), hashes(path_len),
+/// snrs(path_len >> (flags&3)), final_snr]`.
+/// SNR-Werte sind int8 in Viertel-dB-Schritten (SNR*4).
+class TraceResult {
+  TraceResult({
+    required this.tag,
+    required this.flags,
+    required this.hashes,
+    required this.snrs,
+    this.finalSnr,
+  });
+
+  final int tag;
+  final int flags;
+  final List<int> hashes;
+  final List<int> snrs;
+  /// SNR, mit dem das lokale Gerät die letzte Re-Transmit gehört hat.
+  final int? finalSnr;
+
+  int get entrySize => 1 << (flags & 0x03);
+  int get hopCount => hashes.isEmpty ? 0 : (hashes.length / entrySize).round();
+
+  static double? _snrDb(List<int> bytes) {
+    if (bytes.isEmpty) return null;
+    final v = bytes
+        .map((b) => b >= 128 ? b - 256 : b)
+        .reduce((a, b) => a < b ? a : b);
+    return v / 4;
+  }
+
+  /// Schlechteste Verbindung aller traversierten Hops, in dB.
+  double? get worstSnrDb => _snrDb([...snrs, ?finalSnr]);
+
+  /// Empfangsqualität des letzten Hops bei uns, in dB.
+  double? get finalSnrDb => finalSnr == null ? null : (finalSnr! >= 128
+      ? finalSnr! - 256
+      : finalSnr!) / 4;
+
+  String get summary {
+    final parts = <String>['Trace · $hopCount Hop${hopCount == 1 ? '' : 's'}'];
+    final snr = finalSnrDb ?? worstSnrDb;
+    if (snr != null) parts.add('${snr.toStringAsFixed(1)} dB');
+    return parts.join(' · ');
+  }
+}
+
 class PingResult {
   PingResult({
     required this.keyHex,

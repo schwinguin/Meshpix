@@ -70,8 +70,67 @@ class ChannelsPane extends StatelessWidget {
                       if (conv?.hasPendingCatchUp ?? false) 'Nachziehen offen',
                     ].join(' · '),
                   ),
-                  trailing: Text('${conv?.messages.length ?? 0}'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${conv?.messages.length ?? 0}'),
+                      IconButton(
+                        tooltip: app.mutedChannels.contains(ch.name)
+                            ? 'Gedämpft — aktivieren'
+                            : 'Dämpfen',
+                        onPressed: () => app.toggleMutedChannel(ch.name),
+                        icon: Icon(
+                          app.mutedChannels.contains(ch.name)
+                              ? Icons.notifications_off
+                              : Icons.notifications_active_outlined,
+                        ),
+                      ),
+                    ],
+                  ),
                   onTap: onTap,
+                  onLongPress: () async {
+                    final v = await showMenu<String>(
+                      context: context,
+                      position: const RelativeRect.fromLTRB(72, 24, 0, 0),
+                      items: [
+                        PopupMenuItem(
+                          value: 'mute',
+                          child: Text(
+                            app.mutedChannels.contains(ch.name)
+                                ? 'Entdämpfen'
+                                : 'Dämpfen',
+                          ),
+                        ),
+                        const PopupMenuItem(value: 'delete', child: Text('Kanal löschen')),
+                      ],
+                    );
+                    if (!context.mounted) return;
+                    switch (v) {
+                      case 'mute':
+                        app.toggleMutedChannel(ch.name);
+                      case 'delete':
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Kanal löschen?'),
+                            content: Text('„${ch.name}" (Kanal ${ch.index}) wird frei gegeben.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Abbrechen'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Löschen'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (ok == true && context.mounted) {
+                          await app.deleteChannel(ch.index);
+                        }
+                    }
+                  },
                 );
               },
             ),

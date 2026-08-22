@@ -45,6 +45,12 @@ class _HomeScreenState extends State<HomeScreen> {
               const PopupMenuItem(value: 'import', child: Text('Kontakt aus Zwischenablage')),
               const PopupMenuDivider(),
               const PopupMenuItem(value: 'ble', child: Text('Bluetooth scannen')),
+              if (app.session != null) ...const [
+                PopupMenuDivider(),
+                PopupMenuItem(value: 'disconnect', child: Text('Trennen')),
+                PopupMenuItem(value: 'forget', child: Text('Trennen & vergessen')),
+                PopupMenuItem(value: 'reset', child: Text('Werksreset')),
+              ],
             ],
           ),
         ],
@@ -139,7 +145,48 @@ class _HomeScreenState extends State<HomeScreen> {
         importFromClipboard(context, app);
       case 'ble':
         app.startScan();
+      case 'disconnect':
+        app.disconnect();
+      case 'forget':
+        _confirm(
+          context,
+          'Gerät vergessen? Die Automatik-Verbindung wird gelöscht.',
+          () async {
+            app.forgetDevice();
+          },
+        );
+      case 'reset':
+        _confirm(
+          context,
+          'Werksreset? Das Gerät startet neu und das BLE-Pairing wird gelöscht.',
+          () => app.factoryResetDevice(),
+        );
     }
+  }
+
+  Future<void> _confirm(
+    BuildContext context,
+    String text,
+    Future<void> Function() action,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sicher?'),
+        content: Text(text),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Weiter'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) await action();
   }
 }
 

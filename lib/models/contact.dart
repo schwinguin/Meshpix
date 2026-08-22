@@ -35,6 +35,7 @@ class MeshContact {
     this.type = AdvType.chat,
     this.flags = 0,
     this.outPath,
+    this.outPathEntrySize = 1,
     this.lastAdvert,
     this.lat,
     this.lon,
@@ -47,6 +48,8 @@ class MeshContact {
   final int type;
   final int flags;
   final List<int>? outPath;
+  /// Byte width of one out-path entry (1/2/4; MeshCore path-hash mode).
+  final int outPathEntrySize;
   final int? lastAdvert;
   final double? lat;
   final double? lon;
@@ -54,7 +57,11 @@ class MeshContact {
   final int? lastmod;
 
   bool get hasPath => outPath != null && outPath!.isNotEmpty;
-  int get hopCount => outPath?.length ?? 0;
+  int get hopCount {
+    final p = outPath;
+    if (p == null || p.isEmpty) return 0;
+    return (p.length / outPathEntrySize).round();
+  }
   bool get isFavourite => (flags & ContactFlags.favourite) != 0;
   bool get isMuted => (flags & ContactFlags.muted) != 0;
   bool get isChat => type == AdvType.chat || type == AdvType.none;
@@ -72,6 +79,26 @@ class MeshContact {
         .join();
     return a;
   }
+  /// Round-trip path for a trace ping: the known route out to this contact,
+  /// then back along the reverse route (excluding the destination), so the
+  /// final SNR lands at our own node and the node pushes TRACE_DATA to us.
+  /// No known path (zero-hop neighbour) → direct 1-hop trace to the contact.
+  List<int> buildPingPath() {
+    final w = outPathEntrySize.clamp(1, 4);
+    final out = outPath ?? const <int>[];
+    if (out.isEmpty) {
+      return publicKey.length >= w
+          ? publicKey.sublist(0, w)
+          : List<int>.of(publicKey);
+    }
+    final n = (out.length / w).floor();
+    final path = List<int>.of(out);
+    for (var e = n - 2; e >= 0; e--) {
+      path.addAll(out.sublist(e * w, e * w + w));
+    }
+    return path;
+  }
+
 
   DateTime? get lastHeard {
     if (lastAdvert == null || lastAdvert == 0) return null;
@@ -84,6 +111,7 @@ class MeshContact {
     int? type,
     int? flags,
     List<int>? outPath,
+    int? outPathEntrySize,
     int? lastAdvert,
     double? lat,
     double? lon,
@@ -96,6 +124,7 @@ class MeshContact {
       type: type ?? this.type,
       flags: flags ?? this.flags,
       outPath: outPath ?? this.outPath,
+      outPathEntrySize: outPathEntrySize ?? this.outPathEntrySize,
       lastAdvert: lastAdvert ?? this.lastAdvert,
       lat: lat ?? this.lat,
       lon: lon ?? this.lon,

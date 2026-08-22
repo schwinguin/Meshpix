@@ -3,12 +3,14 @@ import 'dart:math';
 
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../codec/mp1.dart';
 import '../codec/rgba.dart';
 import '../companion/ble.dart';
 import '../companion/client.dart';
 import '../companion/control.dart';
+import '../companion/local_prefs.dart';
 import '../geo/elevation.dart';
 import '../geo/geo.dart';
 import '../geo/los.dart';
@@ -75,6 +77,22 @@ class AppController extends ChangeNotifier {
   BleScanner? _scanner;
   StreamSubscription<List<BleScanHit>>? _scanSub;
   bool _connecting = false;
+
+  // --- Lokale Einstellungen (überleben Neustart, Gerät unabhängig) ---
+  final Set<String> blockedContacts = {};
+  final Set<String> mutedContacts = {};
+  final Set<String> mutedChannels = {};
+  bool _prefsLoaded = false;
+  String? _lastDeviceId;
+  String? _lastDeviceName;
+  StreamSubscription<void>? _linkLostSub;
+  bool _userDisconnected = false;
+  int _reconnectAttempts = 0;
+  static const _maxReconnectAttempts = 5;
+  // Trace-Ping: tag -> Contact keyHex (nur wir senden die Tags).
+  final _tracePingByTag = <int, String>{};
+  int _traceTagSeq = 0;
+  final _rng = Random.secure();
 
   NodeSession get active => session!;
 
@@ -163,8 +181,34 @@ class AppController extends ChangeNotifier {
     return convo;
   }
 
+  /// Lädt lokale Einstellungen (Block/Mute, letztes Gerät) und versucht
+  /// einen Auto-Reconnect. Einmalig — beim App-Start aufrufen.
+  Future<void> init() async {
+    if (_prefsLoaded) return;
+    _prefsLoaded = true;
+    blockedContacts
+      ..clear()
+      ..addAll(await LocalPrefs.readBlockedContacts());
+    mutedContacts
+      ..clear()
+      ..addAll(await LocalPrefs.readMutedContacts());
+    mutedChannels
+      ..clear()
+      ..addAll(await LocalPrefs.readMutedChannels());
+    final dev = await LocalPrefs.readDevice();
+    if (dev != null && session == null) {
+      _lastDeviceId = dev.remoteId;
+      _lastDeviceName = dev.name;
+      unawaited(_autoConnectLast());
+    }
+  }
+
   Future<void> startScan() async {
     error = null;
+    _linkLostSub?.cancel();
+    _linkLostSub = null;
+    unawaited(_bleTransport?.close().catchError((_) {}));
+    _disconnectBle();
     _disposeSession();
     _open = null;
     homeTab = 0;
@@ -202,22 +246,30 @@ class AppController extends ChangeNotifier {
 
   Future<void> connectBle(BleScanHit hit) async {
     if (_connecting) return;
-    _connecting = true;
     error = null;
-    status = 'Verbinde mit ${hit.name} …';
+    await stopScan();
+    await _connectToDevice(hit.device, name: hit.name);
+  }
+
+  Future<bool> _connectToDevice(BluetoothDevice device, {String name = ''}) async {
+    if (_connecting) return false;
+    _connecting = true;
+    _userDisconnected = false;
+    final label = name.isEmpty ? 'Gerät' : name;
+    status = 'Verbinde mit $label …';
     notifyListeners();
     // Beim ersten Pairing beantwortet der User einen System-PIN-Dialog;
     // solange blockiert das Gerät. Stattdessen einen Abbruch mit roter
     // Fehlermeldung zu zeigen, sagen wir, was zu tun ist.
     final pinHint = Timer(const Duration(seconds: 10), () {
-      if (status == 'Verbinde mit ${hit.name} …') {
+      if (status == 'Verbinde mit $label …') {
         status = 'PIN-Dialog? PIN eingeben (0000 oder 1234)';
         notifyListeners();
       }
     });
-    await stopScan();
+    var ok = false;
     try {
-      _bleTransport = BleTransport(hit.device);
+      _bleTransport = BleTransport(device);
       await _bleTransport!.connect();
       _bleClient = CompanionClient(transport: _bleTransport!);
       await _bleClient!.handshake();
@@ -227,10 +279,10 @@ class AppController extends ChangeNotifier {
         codec: codec,
         budget: AirtimeBudget(),
       );
-      final name = _bleClient!.self?.name ?? hit.name;
+      final resolved = _bleClient!.self?.name ?? label;
       final newSession = NodeSession(
         id: 'ble',
-        name: name,
+        name: resolved,
         radio: _bleClient!,
         engine: engine,
         conversations: _convosFrom(
@@ -240,12 +292,24 @@ class AppController extends ChangeNotifier {
         ),
       );
       newSession.sub = engine.events.listen((e) => _onEvent(newSession, e));
-      newSession.noticeSub = _bleClient!.notices.listen((n) => _onNotice(newSession, n));
+      newSession.noticeSub =
+          _bleClient!.notices.listen((n) => _onNotice(newSession, n));
       session = newSession;
       _open = newSession.conversations.first;
-      status = 'Verbunden mit $name';
+      // Geräte-Erinnerung + Link-Loss-Beobachtung (Auto-Reconnect).
+      _reconnectAttempts = 0;
+      _linkLostSub?.cancel();
+      _linkLostSub = _bleTransport!.linkLost.listen((_) => _onBleLinkLost());
+      final remoteId = _bleTransport!.device.remoteId.str;
+      _lastDeviceId = remoteId;
+      _lastDeviceName = resolved;
+      unawaited(LocalPrefs.saveDevice(remoteId, resolved));
+      status = 'Verbunden mit $resolved';
       notifyListeners();
+      ok = true;
     } catch (e) {
+      unawaited(_bleTransport?.close().catchError((_) {}));
+      _disconnectBle();
       error = e.toString().contains('Timed out')
           ? 'Kopplung fehlgeschlagen: Timeout — PIN-Dialog unbeantwortet? Erneut versuchen.'
           : 'Kopplung fehlgeschlagen: $e';
@@ -255,6 +319,87 @@ class AppController extends ChangeNotifier {
       pinHint.cancel();
       _connecting = false;
     }
+    return ok;
+  }
+
+  /// Auto-Reconnect zum letzten Gerät (App-Start oder nach Link-Loss).
+  Future<void> _autoConnectLast() async {
+    final id = _lastDeviceId;
+    if (id == null || session != null) return;
+    try {
+      final device = await _deviceById(id);
+      if (device == null) {
+        _reconnectAttempts = 0;
+        startScan();
+        return;
+      }
+      final ok = await _connectToDevice(device, name: _lastDeviceName ?? id);
+      if (!ok) {
+        _reconnectAttempts = 0;
+        startScan();
+      }
+    } catch (_) {
+      // Gerät nicht sichtbar — normales Scannen anbieten.
+      _reconnectAttempts = 0;
+      startScan();
+    }
+  }
+
+  /// Gerät aus Remote-ID: Bond-Liste, aktueller Scan-Puffer,
+  /// sonst kurzer gefilterter Scan.
+  Future<BluetoothDevice?> _deviceById(String id) async {
+    try {
+      for (final d in await FlutterBluePlus.bondedDevices) {
+        if (d.remoteId.str == id) return d;
+      }
+    } catch (_) {
+      // bondedDevices existiert nur auf Android.
+    }
+    final found = Completer<BluetoothDevice>();
+    final sub = FlutterBluePlus.scanResults.listen((batch) {
+      for (final r in batch) {
+        if (r.device.remoteId.str == id && !found.isCompleted) {
+          found.complete(r.device);
+          return;
+        }
+      }
+    });
+    try {
+      await FlutterBluePlus.startScan(
+        withRemoteIds: [id],
+        timeout: const Duration(seconds: 10),
+      );
+      return await found.future.timeout(const Duration(seconds: 10));
+    } catch (_) {
+      return null;
+    } finally {
+      await sub.cancel();
+      unawaited(FlutterBluePlus.stopScan().catchError((_) {}));
+    }
+  }
+
+  void _onBleLinkLost() {
+    _linkLostSub?.cancel();
+    _linkLostSub = null;
+    unawaited(_bleTransport?.close().catchError((_) {}));
+    _disconnectBle();
+    _disposeSession();
+    _open = null;
+    if (_userDisconnected) {
+      notifyListeners();
+      return;
+    }
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      status = null;
+      error = 'Verbindung verloren — Auto-Reconnect aufgegeben';
+      notifyListeners();
+      return;
+    }
+    final attempt = ++_reconnectAttempts;
+    status = 'Verbindung verloren — verbinde erneut '
+        '($attempt/$_maxReconnectAttempts) …';
+    notifyListeners();
+    Timer(Duration(seconds: 2 * attempt), () => unawaited(_autoConnectLast()));
   }
 
   /// Testnaht: Session ohne BLE koppeln (Fake-Radio in Unit-Tests).
@@ -515,6 +660,59 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Kanal löschen: leerer Name + Null-Secret macht den Slot zum Dead-Slot.
+  Future<void> deleteChannel(int idx) async {
+    final title = active.conversations
+        .where((c) => c.isChannel && c.channelIdx == idx)
+        .map((c) => c.title)
+        .firstOrNull;
+    try {
+      await companion?.deleteChannel(idx);
+    } catch (e) {
+      error = 'Kanal konnte nicht gelöscht werden: $e';
+      notifyListeners();
+      return;
+    }
+    if (title != null) mutedChannels.remove(title);
+    active.conversations.removeWhere((c) => c.isChannel && c.channelIdx == idx);
+    error = null;
+    status = title == null || title.isEmpty ? 'Kanal $idx gelöscht' : 'Kanal „$title" gelöscht';
+    notifyListeners();
+  }
+
+  /// Nutzer-Trennung: kein Auto-Reconnect.
+  void disconnect() {
+    _userDisconnected = true;
+    _reconnectAttempts = 0;
+    unawaited(_bleTransport?.close().catchError((_) {}));
+    _disconnectBle();
+    _disposeSession();
+    _open = null;
+    status = null;
+    error = null;
+    notifyListeners();
+  }
+
+  /// Trennen + Geräte-Erinnerung löschen.
+  void forgetDevice() {
+    _lastDeviceId = null;
+    _lastDeviceName = null;
+    unawaited(LocalPrefs.clearDevice());
+    disconnect();
+  }
+
+  /// Werksreset: Gerät startet neu und löst das BLE-Pairing.
+  Future<void> factoryResetDevice() async {
+    try {
+      await companion?.factoryReset();
+    } catch (_) {
+      // Erwartebar: das Gerät trennt vor dem OK-Frame.
+    }
+    forgetDevice();
+    status = 'Werksreset gestartet — Gerät startet neu';
+    notifyListeners();
+  }
+
   void showPath({MeshContact? focus}) {
     homeTab = 4;
     pathFocusKey = focus?.keyHex;
@@ -549,7 +747,9 @@ class AppController extends ChangeNotifier {
     );
     status = 'Ping an ${contact.name} …';
     notifyListeners();
-    _pingTimers[key] = Timer(const Duration(seconds: 4), () {
+    // Ein Round-Trip-Trace über 2–3 Hops (mit Re-Transmit-Verzögerungen)
+    // kann mehrere Sekunden dauern — 15 s Geduld.
+    _pingTimers[key] = Timer(const Duration(seconds: 15), () {
       final cur = pings[key];
       if (cur == null || !cur.inFlight) return;
       pings[key] = cur.copyWith(inFlight: false, ok: false);
@@ -557,13 +757,28 @@ class AppController extends ChangeNotifier {
       notifyListeners();
     });
     try {
-      await companion?.requestStatus(contact);
+      if (contact.isAdminNode) {
+        await companion?.requestStatus(contact);
+      } else {
+        final tag = _nextTraceTag();
+        _tracePingByTag[tag] = key;
+        await companion?.tracePath(contact, tag: tag, flags: _traceFlags(contact));
+      }
     } catch (e) {
       _pingTimers[key]?.cancel();
       pings[key] = pings[key]!.copyWith(inFlight: false, ok: false);
       status = 'Ping fehlgeschlagen: $e';
       notifyListeners();
     }
+  }
+
+  /// Trace-Flags: untere 2 Bits = log2(Path-Eintrag-Weite).
+  static int _traceFlags(MeshContact c) =>
+      c.outPathEntrySize == 2 ? 1 : c.outPathEntrySize == 4 ? 2 : 0;
+
+  int _nextTraceTag() {
+    _traceTagSeq = (_traceTagSeq + 1 + _rng.nextInt(0xFFFF)) & 0x7fffffff;
+    return _traceTagSeq;
   }
 
   Future<void> pingAll() async {
@@ -576,6 +791,24 @@ class AppController extends ChangeNotifier {
     }
     pingingAll = false;
     notifyListeners();
+  }
+
+  void toggleBlockedContact(String keyHex) {
+    if (!blockedContacts.add(keyHex)) blockedContacts.remove(keyHex);
+    notifyListeners();
+    unawaited(LocalPrefs.saveBlockedContacts(blockedContacts));
+  }
+
+  void toggleMutedContact(String keyHex) {
+    if (!mutedContacts.add(keyHex)) mutedContacts.remove(keyHex);
+    notifyListeners();
+    unawaited(LocalPrefs.saveMutedContacts(mutedContacts));
+  }
+
+  void toggleMutedChannel(String title) {
+    if (!mutedChannels.add(title)) mutedChannels.remove(title);
+    notifyListeners();
+    unawaited(LocalPrefs.saveMutedChannels(mutedChannels));
   }
 
   GeoPoint? selfPoint() {
@@ -836,13 +1069,13 @@ class AppController extends ChangeNotifier {
           }
         }
       case CompanionNoticeKind.trace:
-        status = n.traceSummary ?? 'Trace empfangen';
-        _recordTracePing(n);
-        final tr = _repeaterByPrefix(n.pubkey);
-        if (tr != null) {
-          tr.transcript.add(
-            CliLine(kind: CliLineKind.info, text: n.traceSummary ?? 'Trace'),
-          );
+        final t = n.trace;
+        if (t != null) {
+          _recordTracePing(t);
+          final tr = _repeaterByPrefix(n.pubkey);
+          if (tr != null) {
+            tr.transcript.add(CliLine(kind: CliLineKind.info, text: t.summary));
+          }
         }
     }
     notifyListeners();
@@ -922,6 +1155,13 @@ class AppController extends ChangeNotifier {
           : session.conversations.first);
     }
     if (conv == null) return;
+    // Lokale Filter: blockierte Absender werden verworfen, gedämpfte
+    // Quellen zeigen kein Badge.
+    final sender = _contactForPrefix(session, e.senderPrefix);
+    final sKey = sender?.keyHex;
+    if (sKey != null && blockedContacts.contains(sKey)) return;
+    final muted = (conv.isChannel && mutedChannels.contains(conv.title)) ||
+        (sKey != null && mutedContacts.contains(sKey));
     if (e.chunkTotal != null && e.chunkReceived != null) {
       final idx = conv.messages.indexWhere((m) => m.transferId == e.transferId);
       if (idx >= 0) {
@@ -953,7 +1193,7 @@ class AppController extends ChangeNotifier {
         conv.messages[existing] = msg;
       } else {
         conv.messages.add(msg);
-        if (!identical(conv, _open)) {
+        if (!identical(conv, _open) && !muted) {
           conv.unread += 1;
         }
       }
@@ -973,7 +1213,7 @@ class AppController extends ChangeNotifier {
           senderName: _nameForPrefix(session, e.senderPrefix),
         ),
       );
-      if (!identical(conv, _open)) {
+      if (!identical(conv, _open) && !muted) {
         conv.unread += 1;
       }
     }
@@ -1099,14 +1339,22 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void _recordTracePing(CompanionNotice n) {
-    final prefix = n.pubkey == null ? null : Uint8List.fromList(n.pubkey!);
-    final key = _keyHexForPrefix(active, prefix);
+  void _recordTracePing(TraceResult t) {
+    final key = _tracePingByTag.remove(t.tag);
     if (key == null) return;
+    final started = _pingStarted[key];
+    final rttMs =
+        started == null ? null : DateTime.now().difference(started).inMilliseconds;
     final prev = pings[key];
     if (prev == null) return;
-    pings[key] = prev.copyWith(ok: true, inFlight: false);
+    pings[key] = prev.copyWith(
+      ok: true,
+      inFlight: false,
+      rttMs: rttMs,
+      snr: t.finalSnrDb ?? t.worstSnrDb,
+    );
     _pingTimers[key]?.cancel();
+    status = '${prev.name} antwortet · ${t.summary}';
   }
 
   void _handleCatchUp(NodeSession session, TransferEvent e) {
@@ -1132,6 +1380,13 @@ class AppController extends ChangeNotifier {
             .firstOrNull ??
         session.conversations.where((c) => c.isChannel).firstOrNull;
     if (conv == null) return;
+    // Lokale Filter (gleiche Regel wie Live-Eingang).
+    final sender =
+        _contactForPrefix(session, e.senderPrefix ?? pkt.senderPrefix);
+    final sKey = sender?.keyHex;
+    if (sKey != null && blockedContacts.contains(sKey)) return;
+    final muted = (conv.isChannel && mutedChannels.contains(conv.title)) ||
+        (sKey != null && mutedContacts.contains(sKey));
     final senderName = _nameForPrefix(session, e.senderPrefix) ??
         _nameForPrefix(session, pkt.senderPrefix);
     final dup = conv.messages.any((m) {
@@ -1162,7 +1417,7 @@ class AppController extends ChangeNotifier {
           senderName: senderName,
         ),
       );
-      if (!identical(conv, _open)) {
+      if (!identical(conv, _open) && !muted) {
         conv.unread += 1;
       }
     }

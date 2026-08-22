@@ -75,11 +75,20 @@ class BleTransport implements CompanionTransport {
   static const int opTimeoutSec = 60;
   BluetoothCharacteristic? _rx;
   bool _writeNoResponse = false;
+  bool _closed = false;
   final _frames = StreamController<Uint8List>.broadcast();
+  final _linkLost = StreamController<void>.broadcast();
   StreamSubscription<List<int>>? _notifySub;
+  StreamSubscription<BluetoothConnectionState>? _stateSub;
 
   @override
   Stream<Uint8List> get frames => _frames.stream;
+
+  /// Einmalig, wenn die Verbindung getrennt wird (GATT-Fehler, Peer-Reset,
+  /// Gerät außer Reichweite). Eigene [close] löst es nicht aus.
+  Stream<void> get linkLost => _linkLost.stream;
+
+  BluetoothDevice get device => _device;
 
   Future<void> connect() async {
     await _device.connect(timeout: const Duration(seconds: opTimeoutSec));
@@ -117,6 +126,16 @@ class BleTransport implements CompanionTransport {
       if (value.isEmpty) return;
       _frames.add(Uint8List.fromList(value));
     });
+    _stateSub = _device.connectionState.listen((s) {
+      if (s == BluetoothConnectionState.disconnected) _emitLinkLost();
+    });
+  }
+
+  void _emitLinkLost() {
+    if (_closed || _linkLost.isClosed) return;
+    unawaited(_notifySub?.cancel());
+    _notifySub = null;
+    _linkLost.add(null);
   }
 
   @override
@@ -128,8 +147,13 @@ class BleTransport implements CompanionTransport {
 
   @override
   Future<void> close() async {
+    _closed = true;
     await _notifySub?.cancel();
-    await _frames.close();
+    _notifySub = null;
+    await _stateSub?.cancel();
+    _stateSub = null;
     await _device.disconnect();
+    await _frames.close();
+    await _linkLost.close();
   }
 }

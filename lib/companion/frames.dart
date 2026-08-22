@@ -81,7 +81,10 @@ Uint8List cmdAddUpdateContact(MeshContact c) {
   final name = _pad(utf8.encode(c.name), 32);
   final lat = ((c.lat ?? 0) * 1e6).round();
   final lon = ((c.lon ?? 0) * 1e6).round();
-  final pathLen = c.hasPath ? c.outPath!.length : 0;
+  // path_len = count & 63 | ((entrySize-1) << 6), cf. Packet::writePath.
+  final pathLen = c.hasPath
+      ? (c.hopCount & 63) | ((c.outPathEntrySize - 1) << 6)
+      : 0;
   return Uint8List.fromList([
     Cmd.addUpdateContact,
     ..._pad(c.publicKey, 32),
@@ -98,6 +101,17 @@ Uint8List cmdAddUpdateContact(MeshContact c) {
 
 Uint8List cmdRemoveContact(List<int> publicKey) =>
     Uint8List.fromList([Cmd.removeContact, ..._pad(publicKey, 32)]);
+
+/// Factory reset: `[0x33, "reset"]`. Kein OK-Frame — das Gerät deaktiviert
+/// die serielle Schnittstelle (BLE) direkt vor dem Reset.
+Uint8List cmdFactoryReset() => Uint8List.fromList([
+      Cmd.factoryReset,
+      0x72, // 'r'
+      0x65, // 'e'
+      0x73, // 's'
+      0x65, // 'e'
+      0x74, // 't'
+    ]);
 
 Uint8List cmdShareContact(List<int> publicKey) =>
     Uint8List.fromList([Cmd.shareContact, ..._pad(publicKey, 32)]);

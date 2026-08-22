@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/channel.dart';
 import '../models/chat.dart';
+import '../models/contact.dart';
 import '../state/app_controller.dart';
 import 'composer_screen.dart';
 import 'contact_detail.dart';
@@ -52,30 +53,20 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          if (!conv.isChannel)
+          if (conv.isChannel)
             IconButton(
-              tooltip: 'Kontakt',
-              onPressed: () {
-                final key = conv.peerKey;
-                if (key == null) return;
-                for (final c in app.contacts) {
-                  if (c.publicKey.length >= 6 &&
-                      key.length >= 6 &&
-                      c.publicKey[0] == key[0] &&
-                      c.publicKey[1] == key[1] &&
-                      c.publicKey[2] == key[2]) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => ContactDetailScreen(contact: c),
-                      ),
-                    );
-                    return;
-                  }
-                }
-              },
-              icon: const Icon(Icons.info_outline),
-            ),
+              tooltip: app.mutedChannels.contains(conv.title)
+                  ? 'Gedämpft — aktivieren'
+                  : 'Dämpfen',
+              onPressed: () => app.toggleMutedChannel(conv.title),
+              icon: Icon(
+                app.mutedChannels.contains(conv.title)
+                    ? Icons.notifications_off
+                    : Icons.notifications_active_outlined,
+              ),
+            )
+          else
+            ..._dmActions(app, conv),
         ],
       ),
       body: Column(
@@ -163,6 +154,59 @@ class _ChatScreenState extends State<ChatScreen> {
     final t = _text.text;
     _text.clear();
     app.sendText(t);
+  }
+
+  List<Widget> _dmActions(AppController app, Conversation conv) {
+    final key = conv.peerKey;
+    MeshContact? contact;
+    if (key != null && key.length >= 6) {
+      for (final c in app.contacts) {
+        if (c.publicKey.length < 6) continue;
+        var ok = true;
+        for (var i = 0; i < 6; i++) {
+          if (c.publicKey[i] != key[i]) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) {
+          contact = c;
+          break;
+        }
+      }
+    }
+    final c = contact;
+    if (c == null) return const [];
+    final muted = app.mutedContacts.contains(c.keyHex);
+    final blocked = app.blockedContacts.contains(c.keyHex);
+    return [
+      IconButton(
+        tooltip: 'Kontakt',
+        onPressed: () => _openContact(c, context, app),
+        icon: const Icon(Icons.info_outline),
+      ),
+      IconButton(
+        tooltip: muted ? 'Gedämpft — aktivieren' : 'Dämpfen',
+        onPressed: () => app.toggleMutedContact(c.keyHex),
+        icon: Icon(
+          muted ? Icons.notifications_off : Icons.notifications_active_outlined,
+        ),
+      ),
+      IconButton(
+        tooltip: blocked ? 'Blockiert — freigeben' : 'Blockieren',
+        onPressed: () => app.toggleBlockedContact(c.keyHex),
+        icon: Icon(blocked ? Icons.block : Icons.block_outlined),
+      ),
+    ];
+  }
+
+  void _openContact(MeshContact c, BuildContext context, AppController app) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ContactDetailScreen(contact: c),
+      ),
+    );
   }
 }
 

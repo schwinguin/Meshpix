@@ -114,13 +114,60 @@ class ContactsPane extends StatelessWidget {
           );
         }
       },
-      onLongPress: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => ContactDetailScreen(contact: c),
-          ),
+      onLongPress: () async {
+        final v = await showMenu<String>(
+          context: context,
+          position: const RelativeRect.fromLTRB(72, 24, 0, 0),
+          items: [
+            PopupMenuItem(
+              value: 'mute',
+              child: Text(
+                app.mutedContacts.contains(c.keyHex) ? 'Entdämpfen' : 'Dämpfen',
+              ),
+            ),
+            PopupMenuItem(
+              value: 'block',
+              child: Text(
+                app.blockedContacts.contains(c.keyHex) ? 'Entblockieren' : 'Blockieren',
+              ),
+            ),
+            const PopupMenuItem(value: 'delete', child: Text('Löschen')),
+            const PopupMenuItem(value: 'detail', child: Text('Details')),
+          ],
         );
+        if (!context.mounted) return;
+        switch (v) {
+          case 'mute':
+            app.toggleMutedContact(c.keyHex);
+          case 'block':
+            app.toggleBlockedContact(c.keyHex);
+          case 'delete':
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Kontakt löschen?'),
+                content: Text('„${c.name}" wird vom Gerät entfernt.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Abbrechen'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Löschen'),
+                  ),
+                ],
+              ),
+            );
+            if (ok == true && context.mounted) app.deleteContact(c);
+          case 'detail':
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => ContactDetailScreen(contact: c),
+              ),
+            );
+        }
       },
     );
   }

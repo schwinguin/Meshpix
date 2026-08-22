@@ -48,6 +48,7 @@ class Cmd {
   static const sendTracePath = 0x24;
   static const sendTelemetryReq = 0x27;
   static const sendChannelData = 0x3E;
+  static const factoryReset = 0x33;
 }
 
 class Resp {

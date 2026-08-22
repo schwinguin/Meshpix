@@ -176,6 +176,13 @@ class CompanionClient implements PacketRadio, CompanionControl {
   }
 
   @override
+  Future<void> deleteChannel(int idx) => setChannel(idx, '', Uint8List(32));
+
+  @override
+  // Kein OK-Frame: das Gerät deaktiviert BLE direkt vor dem Reset.
+  Future<void> factoryReset() => _send(cmdFactoryReset());
+
+  @override
   Future<void> applyRadio(RadioSettings settings) async {
     await _send(cmdSetRadioParams(settings));
     if (settings.txPowerDbm != null) {
@@ -246,11 +253,13 @@ class CompanionClient implements PacketRadio, CompanionControl {
   }
 
   @override
-  Future<void> tracePath(MeshContact contact) async {
+  Future<void> tracePath(MeshContact contact, {int? tag, int? flags}) async {
+    final t = tag ?? (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
     await _send(
       cmdSendTracePath(
-        path: contact.outPath ?? const [],
-        tag: DateTime.now().millisecondsSinceEpoch & 0x7fffffff,
+        path: contact.buildPingPath(),
+        tag: t,
+        flags: flags ?? 0,
       ),
     );
   }
@@ -363,10 +372,10 @@ class CompanionClient implements PacketRadio, CompanionControl {
         ),
       );
     }
-    if (parsed.traceSummary != null) {
+    if (parsed.trace != null) {
       _notices.add(
         CompanionNotice.trace(
-          traceSummary: parsed.traceSummary,
+          trace: parsed.trace,
           prefix: parsed.advertKey,
         ),
       );

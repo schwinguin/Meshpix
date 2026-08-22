@@ -7,6 +7,7 @@ import '../models/device.dart';
 import '../codec/limits.dart';
 import '../models/repeater.dart';
 import '../transfer/catchup.dart';
+import '../models/signal.dart';
 import '../transfer/protocol.dart';
 import 'constants.dart';
 import 'control.dart';
@@ -32,7 +33,7 @@ class ParsedFrame {
     this.loginOk,
     this.isAdmin,
     this.permissions,
-    this.traceSummary,
+    this.trace,
   });
 
   final int code;
@@ -53,7 +54,7 @@ class ParsedFrame {
   final bool? loginOk;
   final bool? isAdmin;
   final int? permissions;
-  final String? traceSummary;
+  final TraceResult? trace;
 }
 
 String _cstr(Uint8List d, int start, int maxLen) {
@@ -158,11 +159,7 @@ ParsedFrame? parseCompanionFrame(Uint8List d, {required int meshPixDataType}) {
         advertKey: d.length >= 8 ? d.sublist(2, 8) : null,
       );
     case Resp.traceData:
-      return ParsedFrame(
-        code,
-        traceSummary: _parseTrace(d),
-        advertKey: d.length >= 8 ? d.sublist(2, 8) : null,
-      );
+      return ParsedFrame(code, trace: _parseTraceFrame(d));
     default:
       return ParsedFrame(code);
   }
@@ -244,7 +241,7 @@ MeshContact? _parseContact(Uint8List d) {
   o += 1;
   final flags = d[o];
   o += 1;
-  final pathLen = readI8(d[o]);
+  final rawPath = d[o] & 0xFF;
   o += 1;
   final path = d.sublist(o, o + 64);
   o += 64;
@@ -270,16 +267,26 @@ MeshContact? _parseContact(Uint8List d) {
   if (d.length >= o + 4) {
     lastmod = readU32(d, o);
   }
-  final outPath = pathLen > 0 && pathLen <= 64 ? path.sublist(0, pathLen) : Uint8List(0);
+  // 0xFF = OUT_PATH_UNKNOWN (Sentinel). Sonst: count & 63 | ((size-1) << 6).
+  var outPath = <int>[];
+  var outPathEntrySize = 1;
+  if (rawPath != 0xFF) {
+    outPathEntrySize = (rawPath >> 6) + 1;
+    final count = rawPath & 0x3F;
+    final bytes = (count * outPathEntrySize).clamp(0, 64);
+    outPath = path.sublist(0, bytes);
+  }
   return MeshContact(
     publicKey: key,
     name: name,
     type: type,
     flags: flags,
     outPath: outPath,
+    outPathEntrySize: outPathEntrySize,
     lastAdvert: lastAdvert,
     lat: lat,
     lon: lon,
+    alt: null,
     lastmod: lastmod,
   );
 }
@@ -287,7 +294,7 @@ MeshContact? _parseContact(Uint8List d) {
 MeshChannel _parseChannel(Uint8List d) {
   if (d.length < 2) return MeshChannel(index: 0, name: 'Public');
   final idx = d[1];
-  String name;
+  var name = 'Channel $idx';
   Uint8List? secret;
   if (d.length >= 50) {
     name = _cstr(d, 2, 32);
@@ -454,8 +461,28 @@ RepeaterStatus parseRepeaterStatus(Uint8List data) {
   );
 }
 
-String _parseTrace(Uint8List d) {
-  if (d.length < 4) return 'Trace empfangen';
-  final pathLen = d.length > 2 ? d[2] : 0;
-  return 'Trace · $pathLen Hop${pathLen == 1 ? '' : 's'}';
+/// PUSH_CODE_TRACE_DATA (0x89):
+/// `[0x89, 0, path_len, flags, tag(4), auth(4), hashes(path_len),
+/// snrs(path_len >> (flags&3)), final_snr]`.
+TraceResult? _parseTraceFrame(Uint8List d) {
+  if (d.length < 13) return null;
+  final pathLen = d[2] & 0xFF;
+  final flags = d[3] & 0xFF;
+  final tag = readU32(d, 4);
+  final w = 1 << (flags & 0x03);
+  var o = 12;
+  final hashes = pathLen > 0 ? d.sublist(o, o + pathLen) : <int>[];
+  o += pathLen;
+  final n = pathLen == 0 ? 0 : (pathLen / w).round();
+  final snrs = n > 0 && d.length >= o + n ? d.sublist(o, o + n) : <int>[];
+  o += n;
+  int? finalSnr;
+  if (d.length > o) finalSnr = d[o] & 0xFF;
+  return TraceResult(
+    tag: tag,
+    flags: flags,
+    hashes: hashes,
+    snrs: snrs,
+    finalSnr: finalSnr,
+  );
 }
