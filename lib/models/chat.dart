@@ -14,6 +14,8 @@ class ChatMessage {
     this.image,
     this.transferId,
     this.canPull = false,
+    this.pullReceived,
+    this.pullTotal,
   });
 
   final String id;
@@ -24,6 +26,33 @@ class ChatMessage {
   final DecodedImage? image;
   final int? transferId;
   final bool canPull;
+
+  /// Nicht null, solange der Empfänger Nachzug-Pakete sammelt.
+  final int? pullReceived;
+  final int? pullTotal;
+
+  bool get isPulling => pullTotal != null;
+
+  ChatMessage copyWith({
+    String? text,
+    DecodedImage? image,
+    bool? canPull,
+    int? pullReceived,
+    int? pullTotal,
+  }) {
+    return ChatMessage(
+      id: id,
+      kind: kind,
+      outgoing: outgoing,
+      timestamp: timestamp,
+      text: text ?? this.text,
+      image: image ?? this.image,
+      transferId: transferId,
+      canPull: canPull ?? this.canPull,
+      pullReceived: pullReceived ?? this.pullReceived,
+      pullTotal: pullTotal ?? this.pullTotal,
+    );
+  }
 }
 
 class Conversation {

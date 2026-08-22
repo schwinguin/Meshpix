@@ -298,8 +298,15 @@ class AppController extends ChangeNotifier {
   Future<void> pull(ChatMessage msg) async {
     final conv = _open;
     if (conv == null || msg.transferId == null) return;
+    final idx = conv.messages.indexWhere((m) => m.id == msg.id);
+    if (idx >= 0) {
+      conv.messages[idx] = conv.messages[idx].copyWith(
+        pullReceived: 0,
+        pullTotal: msg.image?.upgradeChunks ?? 0,
+      );
+      notifyListeners();
+    }
     await active.engine.requestUpgrade(msg.transferId!, destFor(conv));
-    notifyListeners();
   }
 
   void _onEvent(NodeSession session, TransferEvent e) {
@@ -333,6 +340,17 @@ class AppController extends ChangeNotifier {
           : session.conversations.first);
     }
     if (conv == null) return;
+    if (e.chunkTotal != null && e.chunkReceived != null) {
+      final idx = conv.messages.indexWhere((m) => m.transferId == e.transferId);
+      if (idx >= 0) {
+        conv.messages[idx] = conv.messages[idx].copyWith(
+          pullReceived: e.chunkReceived,
+          pullTotal: e.chunkTotal,
+        );
+      }
+      notifyListeners();
+      return;
+    }
     if (e.image != null) {
       final existing = conv.messages.indexWhere(
         (m) => m.transferId == e.transferId && m.kind == ChatKind.image,

@@ -17,6 +17,8 @@ class TransferEvent {
     this.channelIdx,
     this.senderPrefix,
     this.isText = false,
+    this.chunkReceived,
+    this.chunkTotal,
   });
   final String message;
   final DecodedImage? image;
@@ -27,6 +29,8 @@ class TransferEvent {
   final int? channelIdx;
   final Uint8List? senderPrefix;
   final bool isText;
+  final int? chunkReceived;
+  final int? chunkTotal;
 }
 
 class _Offer {
@@ -280,7 +284,22 @@ class TransferEngine {
         final up = _upgrades[p.transferId];
         if (up == null) return;
         if (p.seq < 0 || p.seq >= up.parts.length) return;
+        final fresh = up.parts[p.seq] == null;
         up.parts[p.seq] = p.slice;
+        if (fresh) {
+          final received = up.parts.where((part) => part != null).length;
+          _events.add(
+            TransferEvent(
+              'Nachzug: $received/${up.total} Pakete',
+              transferId: p.transferId,
+              fromChannel: packet.fromChannel,
+              channelIdx: packet.channelIdx,
+              senderPrefix: packet.senderPrefix,
+              chunkReceived: received,
+              chunkTotal: up.total,
+            ),
+          );
+        }
         if (up.complete) {
           try {
             final blob = codec.reassembleChunks(up.parts);

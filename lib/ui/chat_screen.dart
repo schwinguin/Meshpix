@@ -135,7 +135,25 @@ class _Bubble extends StatelessWidget {
               if (message.image != null) const SizedBox(height: 8),
               Text(message.text!),
             ],
-            if (onPull != null)
+            if (message.isPulling) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  minHeight: 6,
+                  value: (message.pullTotal ?? 0) > 0
+                      ? (message.pullReceived ?? 0) / message.pullTotal!
+                      : null,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Lade Nachzug … '
+                  '${message.pullReceived ?? 0}/${message.pullTotal ?? 0} Pakete',
+                ),
+              ),
+            ] else if (onPull != null)
               TextButton(
                 onPressed: onPull,
                 child: const Text('Nachladen'),
