@@ -19,12 +19,10 @@ import '../models/device.dart';
 import '../models/repeater.dart';
 import '../models/signal.dart';
 import '../models/uri_card.dart';
-import '../sim/sim_mesh.dart';
 import '../transfer/catchup.dart';
 import '../transfer/engine.dart';
 import '../transfer/protocol.dart';
 
-enum AppMode { simulator, bluetooth }
 
 class NodeSession {
   NodeSession({
@@ -48,18 +46,11 @@ class NodeSession {
 }
 
 class AppController extends ChangeNotifier {
-  AppController() {
-    _bootSimulator();
-  }
-
-  AppMode mode = AppMode.simulator;
-  String activeNodeId = 'anna';
+  NodeSession? session;
   String? status;
   String? error;
 
   final codec = Mp1Codec();
-  final mesh = SimMesh();
-  final sessions = <String, NodeSession>{};
   final bleHits = <BleScanHit>[];
   bool scanning = false;
   int homeTab = 0;
@@ -85,13 +76,12 @@ class AppController extends ChangeNotifier {
   StreamSubscription<List<BleScanHit>>? _scanSub;
   bool _connecting = false;
 
-  NodeSession get active => sessions[activeNodeId]!;
+  NodeSession get active => session!;
 
   Conversation? _open;
   Conversation? get openConversation => _open;
 
-  CompanionControl? get companion =>
-      sessions[activeNodeId]?.companion ?? _bleClient;
+  CompanionControl? get companion => session?.companion;
 
   List<MeshContact> get contacts => companion?.contacts ?? const [];
 
@@ -106,76 +96,6 @@ class AppController extends ChangeNotifier {
   void selectTab(int index) {
     homeTab = index;
     notifyListeners();
-  }
-
-  void _bootSimulator() {
-    _disposeSessions();
-    pings.clear();
-    noiseSamples.clear();
-    lastLos = null;
-    pathFocusKey = null;
-    mode = AppMode.simulator;
-    final anna = SimIdentity(
-      id: 'anna',
-      name: 'Anna',
-      publicKey: keyFromSeed(11),
-      lat: 48.137154,
-      lon: 11.576124,
-      alt: 515,
-    );
-    final ben = SimIdentity(
-      id: 'ben',
-      name: 'Ben',
-      publicKey: keyFromSeed(23),
-      lat: 48.1520,
-      lon: 11.6120,
-      alt: 525,
-    );
-    final annaRadio = SimRadio(mesh: mesh, identity: anna);
-    final benRadio = SimRadio(mesh: mesh, identity: ben);
-    annaRadio.loadPeers();
-    benRadio.loadPeers();
-    final relay = MeshContact(
-      publicKey: keyFromSeed(99),
-      name: 'Relay1',
-      type: AdvType.repeater,
-      outPath: Uint8List.fromList([0x02, 0x07]),
-      lastAdvert: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      lat: 47.7033,
-      lon: 12.0123,
-      alt: 1838,
-    );
-    mesh.repeater = SimVirtualRepeater(contact: relay);
-    annaRadio.contacts.add(relay);
-    benRadio.contacts.add(relay);
-    sessions['anna'] = _sessionForSim(annaRadio);
-    sessions['ben'] = _sessionForSim(benRadio);
-    activeNodeId = 'anna';
-    _open = active.conversations.first;
-    status = 'Simulator: Anna und Ben teilen sich ein virtuelles Mesh.';
-    notifyListeners();
-  }
-
-  NodeSession _sessionForSim(SimRadio radio) {
-    final engine = TransferEngine(
-      radio: radio,
-      codec: codec,
-      budget: AirtimeBudget(airtimeFactor: 0.25, bitsPerSecond: 2400),
-    );
-    final session = NodeSession(
-      id: radio.identity.id,
-      name: radio.identity.name,
-      radio: radio,
-      engine: engine,
-      conversations: _convosFrom(
-        idPrefix: radio.identity.id,
-        channels: radio.channels,
-        contacts: radio.contacts,
-      ),
-    );
-    session.sub = engine.events.listen((e) => _onEvent(session, e));
-    session.noticeSub = radio.notices.listen((n) => _onNotice(session, n));
-    return session;
   }
 
   List<Conversation> _convosFrom({
@@ -225,13 +145,6 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  void switchNode(String id) {
-    if (!sessions.containsKey(id)) return;
-    activeNodeId = id;
-    _open = active.conversations.first;
-    notifyListeners();
-  }
-
   void open(Conversation c) {
     _open = c;
     c.unread = 0;
@@ -250,26 +163,29 @@ class AppController extends ChangeNotifier {
     return convo;
   }
 
-  void useSimulator() {
-    error = null;
-    _disconnectBle();
-    _bootSimulator();
-  }
-
   Future<void> startScan() async {
     error = null;
-    mode = AppMode.bluetooth;
+    _disposeSession();
+    _open = null;
+    homeTab = 0;
     scanning = true;
     bleHits.clear();
     notifyListeners();
     _scanner = BleScanner();
     try {
-      _scanSub = _scanner!.scan().listen((hits) {
-        bleHits
-          ..clear()
-          ..addAll(hits);
-        notifyListeners();
-      });
+      _scanSub = _scanner!.scan().listen(
+        (hits) {
+          bleHits
+            ..clear()
+            ..addAll(hits);
+          notifyListeners();
+        },
+        onError: (Object e) {
+          scanning = false;
+          error = 'Bluetooth-Scan fehlgeschlagen: $e';
+          notifyListeners();
+        },
+      );
     } catch (e) {
       scanning = false;
       error = 'Bluetooth-Scan fehlgeschlagen: $e';
@@ -305,14 +221,14 @@ class AppController extends ChangeNotifier {
       await _bleTransport!.connect();
       _bleClient = CompanionClient(transport: _bleTransport!);
       await _bleClient!.handshake();
-      _disposeSessions();
+      _disposeSession();
       final engine = TransferEngine(
         radio: _bleClient!,
         codec: codec,
         budget: AirtimeBudget(),
       );
       final name = _bleClient!.self?.name ?? hit.name;
-      final session = NodeSession(
+      final newSession = NodeSession(
         id: 'ble',
         name: name,
         radio: _bleClient!,
@@ -323,11 +239,10 @@ class AppController extends ChangeNotifier {
           contacts: _bleClient!.contacts,
         ),
       );
-      session.sub = engine.events.listen((e) => _onEvent(session, e));
-      session.noticeSub = _bleClient!.notices.listen((n) => _onNotice(session, n));
-      sessions['ble'] = session;
-      activeNodeId = 'ble';
-      _open = session.conversations.first;
+      newSession.sub = engine.events.listen((e) => _onEvent(newSession, e));
+      newSession.noticeSub = _bleClient!.notices.listen((n) => _onNotice(newSession, n));
+      session = newSession;
+      _open = newSession.conversations.first;
       status = 'Verbunden mit $name';
       notifyListeners();
     } catch (e) {
@@ -340,6 +255,20 @@ class AppController extends ChangeNotifier {
       pinHint.cancel();
       _connecting = false;
     }
+  }
+
+  /// Testnaht: Session ohne BLE koppeln (Fake-Radio in Unit-Tests).
+  @visibleForTesting
+  void attachSession(NodeSession s) {
+    _disposeSession();
+    session = s;
+    s.sub = s.engine.events.listen((e) => _onEvent(s, e));
+    final c = s.companion;
+    if (c != null) {
+      s.noticeSub = c.notices.listen((n) => _onNotice(s, n));
+    }
+    _open = s.conversations.isNotEmpty ? s.conversations.first : null;
+    notifyListeners();
   }
 
   RadioDestination destFor(Conversation c) {
@@ -456,23 +385,6 @@ class AppController extends ChangeNotifier {
       ),
     );
     notifyListeners();
-  }
-
-  void setSimReachable(String radioId, bool reachable) {
-    final session = sessions[radioId];
-    final radio = session?.radio;
-    if (radio is! SimRadio) return;
-    radio.reachable = reachable;
-    if (reachable && session != null) {
-      unawaited(radio.sendSelfAdvert(flood: true));
-      unawaited(_requestCatchUp(session));
-    }
-    notifyListeners();
-  }
-
-  bool isSimReachable(String radioId) {
-    final radio = sessions[radioId]?.radio;
-    return radio is SimRadio && radio.reachable;
   }
 
   Future<void> replayChannel() async {
@@ -727,11 +639,7 @@ class AppController extends ChangeNotifier {
   NoiseSample? get lastNoise =>
       noiseSamples.isEmpty ? null : noiseSamples.last;
 
-  int? get localNoiseFloor {
-    final radio = sessions[activeNodeId]?.radio;
-    if (radio is SimRadio) return radio.noiseFloor;
-    return lastNoise?.dbm;
-  }
+  int? get localNoiseFloor => lastNoise?.dbm;
 
   RepeaterSession repeaterSession(MeshContact contact) {
     return repeaterSessions.putIfAbsent(
@@ -954,25 +862,11 @@ class AppController extends ChangeNotifier {
         }
       }
     }
-    // Simulator: ACK may arrive before the receipt is stored.
-    for (final conv in session.conversations) {
-      for (var i = conv.messages.length - 1; i >= 0; i--) {
-        final m = conv.messages[i];
-        if (m.outgoing &&
-            m.kind == ChatKind.text &&
-            m.delivery != DeliveryStatus.delivered) {
-          conv.messages[i] = m.copyWith(
-            delivery: DeliveryStatus.delivered,
-            rttMs: rtt,
-            ackCode: ack,
-          );
-          return;
-        }
-      }
-    }
   }
 
   void _ensureConvo(NodeSession session, MeshContact contact) {
+    // Repeater & Co. sind Infrastruktur: kein Chat, nur Knoten-Tab.
+    if (!contact.isChat) return;
     if (_findConvoFor(session, contact.publicKey) != null) return;
     session.conversations.add(_convoForContact(session.id, contact));
   }
@@ -1059,7 +953,7 @@ class AppController extends ChangeNotifier {
         conv.messages[existing] = msg;
       } else {
         conv.messages.add(msg);
-        if (!identical(conv, _open) || session.id != activeNodeId) {
+        if (!identical(conv, _open)) {
           conv.unread += 1;
         }
       }
@@ -1079,7 +973,7 @@ class AppController extends ChangeNotifier {
           senderName: _nameForPrefix(session, e.senderPrefix),
         ),
       );
-      if (!identical(conv, _open) || session.id != activeNodeId) {
+      if (!identical(conv, _open)) {
         conv.unread += 1;
       }
     }
@@ -1133,15 +1027,6 @@ class AppController extends ChangeNotifier {
   }
 
   bool _peerLikelyOnline(MeshContact c) {
-    if (mode == AppMode.simulator) {
-      for (final s in sessions.values) {
-        final r = s.radio;
-        if (r is SimRadio && _keyEq(r.identity.publicKey, c.publicKey)) {
-          return r.reachable;
-        }
-      }
-      return false;
-    }
     final heard = c.lastHeard;
     if (heard == null) return false;
     return DateTime.now().difference(heard) < const Duration(minutes: 2);
@@ -1277,7 +1162,7 @@ class AppController extends ChangeNotifier {
           senderName: senderName,
         ),
       );
-      if (!identical(conv, _open) || session.id != activeNodeId) {
+      if (!identical(conv, _open)) {
         conv.unread += 1;
       }
     }
@@ -1325,7 +1210,6 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _replayPendingTo(NodeSession session, MeshContact peer) async {
-    if (mode == AppMode.simulator && !_peerLikelyOnline(peer)) return;
     final dest = RadioDestination.dm(
       Uint8List.fromList(peer.publicKey.take(6).toList()),
       path: peer.hasPath ? Uint8List.fromList(peer.outPath!) : null,
@@ -1376,40 +1260,14 @@ class AppController extends ChangeNotifier {
     if (sent > 0) notifyListeners();
   }
 
-  Future<void> _requestCatchUp(NodeSession session) async {
-    final prefix = _selfPrefixOf(session);
-    for (final c in session.companion?.contacts ?? const <MeshContact>[]) {
-      if (!c.isChat) continue;
-      if (!_peerLikelyOnline(c)) continue;
-      final pkt = CatchUpPacket(
-        kind: CatchKind.syncReq,
-        channelIdx: 0,
-        msgId: 0,
-        timestamp: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        senderPrefix: prefix,
-      );
-      try {
-        await session.engine.sendCatchUp(
-          destination: RadioDestination.dm(
-            Uint8List.fromList(c.publicKey.take(6).toList()),
-          ),
-          packet: pkt,
-        );
-      } catch (_) {}
-    }
-  }
-
-  void _disposeSessions() {
-    for (final s in sessions.values) {
+  void _disposeSession() {
+    final s = session;
+    if (s != null) {
       s.sub?.cancel();
       s.noticeSub?.cancel();
       s.engine.dispose();
-      final r = s.radio;
-      if (r is SimRadio) {
-        r.dispose();
-      }
     }
-    sessions.clear();
+    session = null;
     repeaterSessions.clear();
   }
 
@@ -1427,7 +1285,7 @@ class AppController extends ChangeNotifier {
     _pingTimers.clear();
     _scanSub?.cancel();
     _disconnectBle();
-    _disposeSessions();
+    _disposeSession();
     super.dispose();
   }
 }

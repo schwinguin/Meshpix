@@ -11,8 +11,23 @@ import 'radio_screen.dart';
 import 'share_card.dart';
 import 'theme.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // BLE-first: Scan startet automatisch, sobald der Screen gezeigt wird.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final app = context.read<AppController>();
+      if (app.session == null && !app.scanning) app.startScan();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,24 +36,6 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('MeshPix'),
         actions: [
-          if (app.mode == AppMode.simulator)
-            DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: app.activeNodeId,
-                dropdownColor: const Color(0xFF1B1C22),
-                items: app.sessions.values
-                    .map(
-                      (s) => DropdownMenuItem(
-                        value: s.id,
-                        child: Text(s.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (id) {
-                  if (id != null) app.switchNode(id);
-                },
-              ),
-            ),
           PopupMenuButton<String>(
             onSelected: (v) => _onMenu(context, app, v),
             itemBuilder: (_) => [
@@ -47,7 +44,6 @@ class HomeScreen extends StatelessWidget {
               const PopupMenuItem(value: 'card', child: Text('Meine Karte (QR)')),
               const PopupMenuItem(value: 'import', child: Text('Kontakt aus Zwischenablage')),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 'sim', child: Text('Simulator')),
               const PopupMenuItem(value: 'ble', child: Text('Bluetooth scannen')),
             ],
           ),
@@ -55,32 +51,6 @@ class HomeScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: SegmentedButton<AppMode>(
-              segments: const [
-                ButtonSegment(
-                  value: AppMode.simulator,
-                  label: Text('Simulator'),
-                  icon: Icon(Icons.science_outlined),
-                ),
-                ButtonSegment(
-                  value: AppMode.bluetooth,
-                  label: Text('Bluetooth'),
-                  icon: Icon(Icons.bluetooth),
-                ),
-              ],
-              selected: {app.mode},
-              onSelectionChanged: (s) {
-                final mode = s.first;
-                if (mode == AppMode.simulator) {
-                  app.useSimulator();
-                } else {
-                  app.startScan();
-                }
-              },
-            ),
-          ),
           if (app.status != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -91,16 +61,16 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               child: Text(app.error!, style: const TextStyle(color: Colors.redAccent)),
             ),
-          if (app.mode == AppMode.bluetooth && app.scanning)
+          if (app.scanning)
             const LinearProgressIndicator(),
           Expanded(
-            child: app.mode == AppMode.bluetooth && app.sessions['ble'] == null
+            child: app.session == null
                 ? _ScanList(app: app)
                 : _tabBody(app),
           ),
         ],
       ),
-      bottomNavigationBar: app.mode == AppMode.bluetooth && app.sessions['ble'] == null
+      bottomNavigationBar: app.session == null
           ? null
           : NavigationBar(
               selectedIndex: app.homeTab,
@@ -167,8 +137,6 @@ class HomeScreen extends StatelessWidget {
         );
       case 'import':
         importFromClipboard(context, app);
-      case 'sim':
-        app.useSimulator();
       case 'ble':
         app.startScan();
     }
@@ -181,7 +149,7 @@ class _ConvoList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (app.sessions.isEmpty) {
+    if (app.session == null) {
       return const Center(child: Text('Kein Mesh verbunden'));
     }
     // Nur echte DMs: Kanäle leben im Kanäle-Tab, Repeater im Knoten-Tab.

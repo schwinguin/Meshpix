@@ -1,8 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meshpix/geo/geo.dart';
 import 'package:meshpix/geo/los.dart';
-import 'package:meshpix/models/contact.dart';
-import 'package:meshpix/state/app_controller.dart';
 
 void main() {
   test('haversine and bearing for a short Munich hop', () {
@@ -63,39 +61,5 @@ void main() {
       toName: 'B',
     );
     expect(r.verdict, LosVerdict.noFix);
-  });
-
-  test('simulator ping fills RTT and noise, LOS to Relay1 is clear', () async {
-    final app = AppController();
-    addTearDown(app.dispose);
-    expect(app.selfPoint(), isNotNull);
-
-    final ben = app.contacts.firstWhere((c) => c.name == 'Ben');
-    final relay = app.contacts.firstWhere((c) => c.name == 'Relay1');
-    expect(ben.hasLocation, isTrue);
-    expect(relay.hasLocation, isTrue);
-    expect(relay.type, AdvType.repeater);
-
-    await app.ping(ben);
-    final start = DateTime.now();
-    while (app.pings[ben.keyHex]?.ok != true) {
-      if (DateTime.now().difference(start) > const Duration(seconds: 2)) {
-        fail('Ping an Ben kam nicht');
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    }
-    final ping = app.pings[ben.keyHex]!;
-    expect(ping.rttMs, isNotNull);
-    expect(ping.noiseFloor, isNotNull);
-    expect(app.noiseSamples, isNotEmpty);
-
-    final losBen = await app.computeLos(ben);
-    expect(losBen.verdict, isNot(LosVerdict.noFix));
-    expect(losBen.distanceM, greaterThan(2000));
-
-    final losRelay = await app.computeLos(relay);
-    expect(losRelay.verdict, LosVerdict.clear);
-    expect(losRelay.distanceM, greaterThan(40000));
-    expect(losRelay.samples, isNotEmpty);
   });
 }

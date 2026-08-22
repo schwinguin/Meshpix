@@ -5,12 +5,13 @@ import 'package:meshpix/codec/limits.dart';
 import 'package:meshpix/companion/constants.dart';
 import 'package:meshpix/companion/frames.dart';
 import 'package:meshpix/companion/parser.dart';
-import 'package:meshpix/models/chat.dart';
 import 'package:meshpix/models/contact.dart';
 import 'package:meshpix/models/device.dart';
 import 'package:meshpix/models/repeater.dart';
 import 'package:meshpix/models/uri_card.dart';
 import 'package:meshpix/state/app_controller.dart';
+
+import 'fake_companion.dart';
 
 void main() {
   test('meshcore:// contact URI round-trips like MeshCore One', () {
@@ -105,38 +106,6 @@ void main() {
     expect(frame[10], 5);
   });
 
-  test('simulator DM gets delivered ACK like MeshCore One', () async {
-    final app = AppController();
-    addTearDown(app.dispose);
-    app.open(app.sessions['anna']!.conversations.firstWhere((c) => !c.isChannel));
-    await app.sendText('ping von Anna');
-
-    final start = DateTime.now();
-    ChatMessage msg() => app.sessions['anna']!
-        .conversations
-        .firstWhere((c) => !c.isChannel)
-        .messages
-        .last;
-    while (msg().delivery != DeliveryStatus.delivered) {
-      if (DateTime.now().difference(start) > const Duration(seconds: 2)) {
-        fail('ACK kam nicht (status=${msg().delivery})');
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    }
-    expect(msg().text, 'ping von Anna');
-    expect(msg().rttMs, isNotNull);
-
-    final ben = app.sessions['ben']!.conversations.firstWhere((c) => !c.isChannel);
-    expect(ben.messages.where((m) => m.text == 'ping von Anna'), isNotEmpty);
-  });
-
-  test('advert from Anna appears as contact notice on Ben', () async {
-    final app = AppController();
-    addTearDown(app.dispose);
-    await app.sendAdvert(flood: true);
-    expect(app.sessions['ben']!.companion!.contacts.any((c) => c.name == 'Anna'), isTrue);
-  });
-
   test('EU preset matches MeshCore One numbers', () {
     final eu = RadioPreset.all.firstWhere((p) => p.id == 'eu868');
     expect(eu.settings.freqMhz, 869.525);
@@ -183,8 +152,18 @@ void main() {
   });
 
   test('login + CLI stay out of the chat log', () async {
+    final fake = FakeCompanion(
+      contacts: [
+        MeshContact(
+          publicKey: List<int>.generate(32, (i) => i + 1),
+          name: 'Relay1',
+          type: AdvType.repeater,
+        ),
+      ],
+    );
     final app = AppController();
     addTearDown(app.dispose);
+    app.attachSession(testSession(fake));
     final relay = app.contacts.firstWhere((c) => c.name == 'Relay1');
     expect(relay.type, AdvType.repeater);
 
@@ -207,7 +186,7 @@ void main() {
     expect(session.neighbors, isNotEmpty);
 
     expect(
-      app.sessions['anna']!.conversations.any((c) => c.title == 'Relay1'),
+      app.session!.conversations.any((c) => c.title == 'Relay1'),
       isFalse,
       reason: 'CLI darf nicht in den Chat',
     );
@@ -236,39 +215,35 @@ void main() {
   });
 
   test('channel creation uses first free slot and appears in chats', () async {
+    final fake = FakeCompanion();
     final app = AppController();
     addTearDown(app.dispose);
-    final anna = app.sessions['anna']!;
-    expect(anna.companion!.channels, hasLength(1)); // nur Public
+    app.attachSession(testSession(fake));
+    expect(app.session!.companion!.channels, hasLength(1)); // nur Public
 
     await app.createChannel('Wald');
-    final ch = anna.companion!.channels.firstWhere((c) => c.name == 'Wald');
+    final ch = fake.channels.firstWhere((c) => c.name == 'Wald');
     expect(ch.index, 1);
     expect(ch.secret, hasLength(16));
     expect(
-      anna.conversations.any((c) => c.isChannel && c.channelIdx == 1),
+      app.session!.conversations.any((c) => c.isChannel && c.channelIdx == 1),
       isTrue,
     );
 
     await app.createChannel('Tal');
-    expect(
-      anna.companion!.channels.firstWhere((c) => c.name == 'Tal').index,
-      2,
-    );
+    expect(fake.channels.firstWhere((c) => c.name == 'Tal').index, 2);
   });
 
   test('createChannel refuses when all private slots are used', () async {
+    final fake = FakeCompanion();
+    for (var i = 1; i <= 7; i++) {
+      await fake.setChannel(i, 'K$i', Uint8List(16));
+    }
     final app = AppController();
     addTearDown(app.dispose);
-    final anna = app.sessions['anna']!;
-    for (var i = 1; i <= 7; i++) {
-      await anna.companion!.setChannel(i, 'K$i', Uint8List(16));
-    }
+    app.attachSession(testSession(fake));
     await app.createChannel('Noch einer');
     expect(app.error, contains('Kein freier Kanalslot'));
-    expect(
-      anna.companion!.channels.any((c) => c.name == 'Noch einer'),
-      isFalse,
-    );
+    expect(fake.channels.any((c) => c.name == 'Noch einer'), isFalse);
   });
 }
