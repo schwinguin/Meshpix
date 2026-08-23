@@ -55,6 +55,7 @@ class AppController extends ChangeNotifier {
   final codec = Mp1Codec();
   final bleHits = <BleScanHit>[];
   bool scanning = false;
+  bool reconnecting = false;
   int homeTab = 0;
   final repeaterSessions = <String, RepeaterSession>{};
   final pings = <String, PingResult>{};
@@ -199,7 +200,20 @@ class AppController extends ChangeNotifier {
     if (dev != null && session == null) {
       _lastDeviceId = dev.remoteId;
       _lastDeviceName = dev.name;
-      unawaited(_autoConnectLast());
+    } else if (session == null && await _bleAvailable()) {
+      // Ersteinrichtung: kein vorheriges Gerät gespeichert — scannen.
+      unawaited(startScan());
+    }
+  }
+
+  /// Ob die BLE-Plattform verfügbar ist (Test-/Desktop-Environment
+  /// werfen beim ersten Plattformzugriff).
+  static Future<bool> _bleAvailable() async {
+    try {
+      await FlutterBluePlus.adapterState.first;
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -326,6 +340,9 @@ class AppController extends ChangeNotifier {
   Future<void> _autoConnectLast() async {
     final id = _lastDeviceId;
     if (id == null || session != null) return;
+    reconnecting = true;
+    status = 'Verbinde mit ${_lastDeviceName ?? id} …';
+    notifyListeners();
     try {
       final device = await _deviceById(id);
       if (device == null) {
@@ -342,6 +359,9 @@ class AppController extends ChangeNotifier {
       // Gerät nicht sichtbar — normales Scannen anbieten.
       _reconnectAttempts = 0;
       startScan();
+    } finally {
+      reconnecting = false;
+      notifyListeners();
     }
   }
 
@@ -364,17 +384,26 @@ class AppController extends ChangeNotifier {
         }
       }
     });
+    final wasScanning = await FlutterBluePlus.isScanning.first;
+    bool started = false;
     try {
-      await FlutterBluePlus.startScan(
-        withRemoteIds: [id],
-        timeout: const Duration(seconds: 10),
-      );
+      if (!wasScanning) {
+        await FlutterBluePlus.startScan(
+          withRemoteIds: [id],
+          timeout: const Duration(seconds: 10),
+        );
+        started = true;
+      }
       return await found.future.timeout(const Duration(seconds: 10));
     } catch (_) {
       return null;
     } finally {
       await sub.cancel();
-      unawaited(FlutterBluePlus.stopScan().catchError((_) {}));
+      // Nur den eigenen Scan stoppen, nie einen laufenden
+      // (benutzergestarteten) Scan.
+      if (started) {
+        unawaited(FlutterBluePlus.stopScan().catchError((_) {}));
+      }
     }
   }
 

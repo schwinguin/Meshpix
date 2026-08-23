@@ -20,16 +20,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   @override
-  void initState() {
-    super.initState();
-    // BLE-first: Scan startet automatisch, sobald der Screen gezeigt wird.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final app = context.read<AppController>();
-      if (app.session == null && !app.scanning) app.startScan();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
     return Scaffold(
@@ -71,7 +61,22 @@ class _HomeScreenState extends State<HomeScreen> {
             const LinearProgressIndicator(),
           Expanded(
             child: app.session == null
-                ? _ScanList(app: app)
+                ? (app.reconnecting
+                    ? const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              height: 32,
+                              width: 32,
+                              child: CircularProgressIndicator(strokeWidth: 2.5),
+                            ),
+                            SizedBox(height: 12),
+                            Text('Verbinde …'),
+                          ],
+                        ),
+                      )
+                    : _ScanList(app: app))
                 : _tabBody(app),
           ),
         ],

@@ -49,7 +49,13 @@ class BleScanner {
     });
   }
 
-  Future<void> stop() => FlutterBluePlus.stopScan();
+  Future<void> stop() async {
+    try {
+      await FlutterBluePlus.stopScan();
+    } catch (_) {
+      // Plattform nicht verfügbar (Test-/Desktop-Environment).
+    }
+  }
 
   Future<void> _ensurePermissions() async {
     if (!Platform.isAndroid) return;

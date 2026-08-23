@@ -16,7 +16,7 @@ class MeshPixApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AppController(),
+      create: (_) => AppController()..init(),
       child: MaterialApp(
         title: 'MeshPix',
         debugShowCheckedModeBanner: false,
