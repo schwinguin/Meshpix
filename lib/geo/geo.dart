@@ -30,7 +30,8 @@ double haversineM(GeoPoint a, GeoPoint b) {
   final dLon = _rad(b.lon - a.lon);
   final la1 = _rad(a.lat);
   final la2 = _rad(b.lat);
-  final h = sin(dLat / 2) * sin(dLat / 2) +
+  final h =
+      sin(dLat / 2) * sin(dLat / 2) +
       cos(la1) * cos(la2) * sin(dLon / 2) * sin(dLon / 2);
   return 2 * earthRadiusM * atan2(sqrt(h), sqrt(1 - h));
 }
@@ -71,9 +72,7 @@ GeoPoint greatCirclePoint(GeoPoint a, GeoPoint b, double t) {
 
 List<GeoPoint> samplePath(GeoPoint a, GeoPoint b, {int count = 32}) {
   final n = count < 2 ? 2 : count;
-  return [
-    for (var i = 0; i < n; i++) greatCirclePoint(a, b, i / (n - 1)),
-  ];
+  return [for (var i = 0; i < n; i++) greatCirclePoint(a, b, i / (n - 1))];
 }
 
 String formatKm(double meters) {

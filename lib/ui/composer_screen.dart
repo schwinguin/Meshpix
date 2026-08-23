@@ -69,7 +69,11 @@ class _ComposerScreenState extends State<ComposerScreen> {
 
   Future<void> _pick(ImageSource source) async {
     final picker = ImagePicker();
-    final file = await picker.pickImage(source: source, maxWidth: 512, imageQuality: 85);
+    final file = await picker.pickImage(
+      source: source,
+      maxWidth: 512,
+      imageQuality: 85,
+    );
     if (file == null) return;
     final bytes = await file.readAsBytes();
     final uiImage = await decodeUiImage(bytes);
@@ -130,9 +134,7 @@ class _ComposerScreenState extends State<ComposerScreen> {
           SwitchListTile(
             title: const Text('JPEG-Nachzug (Foto, nur Direct/DM)'),
             subtitle: Text(
-              channel
-                  ? 'Public Channel: nur Preview, kein Flood der Chunks'
-                  : 'Empfänger tippt Nachladen. Ziel ~160px JPEG, sonst 96px Pixelart.',
+              channel ? 'Public Channel: nur Preview, kein Flood der Chunks' : 'Empfänger tippt Nachladen. Ziel ~160px JPEG, sonst 96px Pixelart.',
             ),
             value: _upgrade && !channel,
             onChanged: channel
@@ -178,4 +180,3 @@ class _ComposerScreenState extends State<ComposerScreen> {
     );
   }
 }
-

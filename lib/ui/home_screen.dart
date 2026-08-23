@@ -29,16 +29,34 @@ class _HomeScreenState extends State<HomeScreen> {
           PopupMenuButton<String>(
             onSelected: (v) => _onMenu(context, app, v),
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'advert0', child: Text('Zero-Hop Advert')),
-              const PopupMenuItem(value: 'advertFlood', child: Text('Flood Advert')),
-              const PopupMenuItem(value: 'card', child: Text('Meine Karte (QR)')),
-              const PopupMenuItem(value: 'import', child: Text('Kontakt aus Zwischenablage')),
+              const PopupMenuItem(
+                value: 'advert0',
+                child: Text('Zero-Hop Advert'),
+              ),
+              const PopupMenuItem(
+                value: 'advertFlood',
+                child: Text('Flood Advert'),
+              ),
+              const PopupMenuItem(
+                value: 'card',
+                child: Text('Meine Karte (QR)'),
+              ),
+              const PopupMenuItem(
+                value: 'import',
+                child: Text('Kontakt aus Zwischenablage'),
+              ),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 'ble', child: Text('Bluetooth scannen')),
+              const PopupMenuItem(
+                value: 'ble',
+                child: Text('Bluetooth scannen'),
+              ),
               if (app.session != null) ...const [
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'disconnect', child: Text('Trennen')),
-                PopupMenuItem(value: 'forget', child: Text('Trennen & vergessen')),
+                PopupMenuItem(
+                  value: 'forget',
+                  child: Text('Trennen & vergessen'),
+                ),
                 PopupMenuItem(value: 'reset', child: Text('Werksreset')),
               ],
             ],
@@ -50,33 +68,40 @@ class _HomeScreenState extends State<HomeScreen> {
           if (app.status != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(app.status!, style: const TextStyle(color: meshPaper)),
+              child: Text(
+                app.status!,
+                style: const TextStyle(color: meshPaper),
+              ),
             ),
           if (app.error != null)
             Padding(
               padding: const EdgeInsets.all(12),
-              child: Text(app.error!, style: const TextStyle(color: Colors.redAccent)),
+              child: Text(
+                app.error!,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
             ),
-          if (app.scanning)
-            const LinearProgressIndicator(),
+          if (app.scanning) const LinearProgressIndicator(),
           Expanded(
             child: app.session == null
                 ? (app.reconnecting
-                    ? const Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              height: 32,
-                              width: 32,
-                              child: CircularProgressIndicator(strokeWidth: 2.5),
-                            ),
-                            SizedBox(height: 12),
-                            Text('Verbinde …'),
-                          ],
-                        ),
-                      )
-                    : _ScanList(app: app))
+                      ? const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                height: 32,
+                                width: 32,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                ),
+                              ),
+                              SizedBox(height: 12),
+                              Text('Verbinde …'),
+                            ],
+                          ),
+                        )
+                      : _ScanList(app: app))
                 : _tabBody(app),
           ),
         ],
@@ -141,11 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'card':
         final uri = app.exportSelfUri();
         if (uri.isEmpty) return;
-        showShareCard(
-          context,
-          title: app.self?.name ?? 'Ich',
-          uri: uri,
-        );
+        showShareCard(context, title: app.self?.name ?? 'Ich', uri: uri);
       case 'import':
         importFromClipboard(context, app);
       case 'ble':
@@ -205,9 +226,7 @@ class _ConvoList extends StatelessWidget {
       return const Center(child: Text('Kein Mesh verbunden'));
     }
     // Nur echte DMs: Kanäle leben im Kanäle-Tab, Repeater im Knoten-Tab.
-    final convos = app.active.conversations
-        .where((c) => !c.isChannel)
-        .toList()
+    final convos = app.active.conversations.where((c) => !c.isChannel).toList()
       ..sort((a, b) {
         final at = a.lastMessage?.timestamp;
         final bt = b.lastMessage?.timestamp;
@@ -243,12 +262,18 @@ class _ConvoList extends StatelessWidget {
                 if (c.unread > 0)
                   Container(
                     margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: meshTeal,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text('${c.unread}', style: const TextStyle(fontSize: 12)),
+                    child: Text(
+                      '${c.unread}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   )
                 else
                   Text('${c.messages.length}'),

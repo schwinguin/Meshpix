@@ -16,13 +16,9 @@ import 'package:meshpix/transfer/protocol.dart';
 /// Reagiert wie ein echtes Gerät: Login nur mit dem korrekten Passwort,
 /// CLI-Antworten auf `ver`/`neighbors`, Kanäle über setChannel.
 class FakeCompanion implements PacketRadio, CompanionControl {
-  FakeCompanion({
-    List<MeshContact>? contacts,
-    List<MeshChannel>? channels,
-  })  : contacts = contacts ?? <MeshContact>[],
-        channels = channels ?? [
-          MeshChannel(index: 0, name: 'Public'),
-        ];
+  FakeCompanion({List<MeshContact>? contacts, List<MeshChannel>? channels})
+    : contacts = contacts ?? <MeshContact>[],
+      channels = channels ?? [MeshChannel(index: 0, name: 'Public')];
 
   final _incoming = StreamController<IncomingPacket>.broadcast();
   final _notices = StreamController<CompanionNotice>.broadcast();
@@ -49,8 +45,7 @@ class FakeCompanion implements PacketRadio, CompanionControl {
   Future<TxReceipt?> sendText({
     required RadioDestination destination,
     required String text,
-  }) async =>
-      const TxReceipt(flooded: true);
+  }) async => const TxReceipt(flooded: true);
 
   @override
   Future<void> sendDatagram({
@@ -153,7 +148,11 @@ class FakeCompanion implements PacketRadio, CompanionControl {
       return;
     }
     final i = channels.indexWhere((c) => c.index == idx);
-    final ch = MeshChannel(index: idx, name: name, secret: List<int>.from(secret));
+    final ch = MeshChannel(
+      index: idx,
+      name: name,
+      secret: List<int>.from(secret),
+    );
     if (i >= 0) {
       channels[i] = ch;
     } else {
@@ -176,7 +175,10 @@ class FakeCompanion implements PacketRadio, CompanionControl {
 }
 
 /// Baut eine NodeSession wie connectBle sie auf, aber mit Fake-Radio.
-NodeSession testSession(FakeCompanion fake, {List<Conversation>? conversations}) {
+NodeSession testSession(
+  FakeCompanion fake, {
+  List<Conversation>? conversations,
+}) {
   final engine = TransferEngine(
     radio: fake,
     codec: Mp1Codec(),
@@ -187,7 +189,8 @@ NodeSession testSession(FakeCompanion fake, {List<Conversation>? conversations})
     name: 'TestNode',
     radio: fake,
     engine: engine,
-    conversations: conversations ??
+    conversations:
+        conversations ??
         [
           Conversation(
             id: 'test-ch0',

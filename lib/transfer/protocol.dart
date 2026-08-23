@@ -5,10 +5,7 @@ import '../companion/control.dart';
 
 /// Estimated airtime and the mandatory silence after a transmit.
 class AirtimeBudget {
-  AirtimeBudget({
-    this.airtimeFactor = 2.0,
-    this.bitsPerSecond = 1200,
-  });
+  AirtimeBudget({this.airtimeFactor = 2.0, this.bitsPerSecond = 1200});
 
   /// Gap after TX as a multiple of on-air time (MeshCore AF).
   double airtimeFactor;

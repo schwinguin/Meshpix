@@ -5,7 +5,11 @@ import 'package:image/image.dart' as im;
 import 'rgba.dart';
 
 /// Fit [source] into a square JPEG of [size] at [quality] (1–100).
-Uint8List encodeJpegSquare(RgbaImage source, {required int size, required int quality}) {
+Uint8List encodeJpegSquare(
+  RgbaImage source, {
+  required int size,
+  required int quality,
+}) {
   final squared = source.square(size);
   final frame = im.Image(
     width: squared.width,
@@ -19,7 +23,9 @@ Uint8List encodeJpegSquare(RgbaImage source, {required int size, required int qu
       frame.setPixelRgb(x, y, px[0], px[1], px[2]);
     }
   }
-  return Uint8List.fromList(im.encodeJpg(frame, quality: quality.clamp(1, 100)));
+  return Uint8List.fromList(
+    im.encodeJpg(frame, quality: quality.clamp(1, 100)),
+  );
 }
 
 class JpegArgb {

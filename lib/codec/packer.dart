@@ -54,9 +54,7 @@ Uint8List rleEncode(List<int> indices) {
   while (i < indices.length) {
     final v = indices[i] & 0xFF;
     var run = 1;
-    while (i + run < indices.length &&
-        indices[i + run] == v &&
-        run < 255) {
+    while (i + run < indices.length && indices[i + run] == v && run < 255) {
       run++;
     }
     out.addByte(run);

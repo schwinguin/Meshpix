@@ -28,8 +28,9 @@ class ContactsPane extends StatelessWidget {
     }
     final chat = items.where((c) => c.isChat).toList();
     final repeaters = items.where((c) => c.type == AdvType.repeater).toList();
-    final other =
-        items.where((c) => !c.isChat && c.type != AdvType.repeater).toList();
+    final other = items
+        .where((c) => !c.isChat && c.type != AdvType.repeater)
+        .toList();
     return ListView(
       children: [
         if (chat.isNotEmpty) ...[
@@ -65,10 +66,7 @@ class ContactsPane extends StatelessWidget {
 
   Widget _row(BuildContext context, AppController app, MeshContact c) {
     return ListTile(
-      leading: Icon(
-        _icon(c.type),
-        color: c.isFavourite ? meshAmber : meshTeal,
-      ),
+      leading: Icon(_icon(c.type), color: c.isFavourite ? meshAmber : meshTeal),
       title: Text(c.name),
       subtitle: Text(
         [
@@ -128,7 +126,9 @@ class ContactsPane extends StatelessWidget {
             PopupMenuItem(
               value: 'block',
               child: Text(
-                app.blockedContacts.contains(c.keyHex) ? 'Entblockieren' : 'Blockieren',
+                app.blockedContacts.contains(c.keyHex)
+                    ? 'Entblockieren'
+                    : 'Blockieren',
               ),
             ),
             const PopupMenuItem(value: 'delete', child: Text('Löschen')),
@@ -186,11 +186,13 @@ class ContactsPane extends StatelessWidget {
   }
 }
 
-Future<void> importFromClipboard(BuildContext context, AppController app) async {
+Future<void> importFromClipboard(
+  BuildContext context,
+  AppController app,
+) async {
   final data = await Clipboard.getData(Clipboard.kTextPlain);
   final err = await app.importContactUri(data?.text ?? '');
   if (!context.mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(err ?? 'Kontakt importiert')),
-  );
+  ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(err ?? 'Kontakt importiert')));
 }

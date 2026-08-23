@@ -18,9 +18,9 @@ class ContactDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
     final live = app.contacts.cast<MeshContact?>().firstWhere(
-          (c) => c != null && c.keyHex == contact.keyHex,
-          orElse: () => contact,
-        )!;
+      (c) => c != null && c.keyHex == contact.keyHex,
+      orElse: () => contact,
+    )!;
     return Scaffold(
       appBar: AppBar(
         title: Text(live.name),
@@ -49,7 +49,9 @@ class ContactDetailScreen extends StatelessWidget {
             leading: const Icon(Icons.alt_route),
             title: const Text('Pfad'),
             subtitle: Text(
-              live.hasPath ? '${live.hopCount} Hop${live.hopCount == 1 ? '' : 's'}' : 'kein gespeicherter Pfad',
+              live.hasPath
+                  ? '${live.hopCount} Hop${live.hopCount == 1 ? '' : 's'}'
+                  : 'kein gespeicherter Pfad',
             ),
           ),
           if (live.hasLocation)
@@ -72,7 +74,9 @@ class ContactDetailScreen extends StatelessWidget {
                 );
               },
               icon: const Icon(Icons.admin_panel_settings_outlined),
-              label: Text(live.type == AdvType.room ? 'Room Admin' : 'Repeater Admin'),
+              label: Text(
+                live.type == AdvType.room ? 'Room Admin' : 'Repeater Admin',
+              ),
             ),
           if (live.isChat)
             FilledButton.icon(
@@ -126,7 +130,10 @@ class ContactDetailScreen extends StatelessWidget {
                   if (context.mounted) Navigator.pop(context);
                 },
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                label: const Text('Löschen', style: TextStyle(color: Colors.redAccent)),
+                label: const Text(
+                  'Löschen',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
               ),
             ],
           ),

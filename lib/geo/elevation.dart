@@ -13,9 +13,7 @@ class SyntheticElevation implements ElevationSource {
 
   @override
   Future<List<double>> along(GeoPoint from, GeoPoint to, {int count = 32}) {
-    return Future<List<double>>.value(
-      syntheticTerrain(from, to, count: count),
-    );
+    return Future<List<double>>.value(syntheticTerrain(from, to, count: count));
   }
 }
 
@@ -27,7 +25,11 @@ class OpenMeteoElevation implements ElevationSource {
   final _client = HttpClient();
 
   @override
-  Future<List<double>> along(GeoPoint from, GeoPoint to, {int count = 32}) async {
+  Future<List<double>> along(
+    GeoPoint from,
+    GeoPoint to, {
+    int count = 32,
+  }) async {
     final points = samplePath(from, to, count: count);
     try {
       final lats = points.map((p) => p.lat.toStringAsFixed(5)).join(',');

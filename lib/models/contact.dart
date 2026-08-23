@@ -48,6 +48,7 @@ class MeshContact {
   final int type;
   final int flags;
   final List<int>? outPath;
+
   /// Byte width of one out-path entry (1/2/4; MeshCore path-hash mode).
   final int outPathEntrySize;
   final int? lastAdvert;
@@ -62,6 +63,7 @@ class MeshContact {
     if (p == null || p.isEmpty) return 0;
     return (p.length / outPathEntrySize).round();
   }
+
   bool get isFavourite => (flags & ContactFlags.favourite) != 0;
   bool get isMuted => (flags & ContactFlags.muted) != 0;
   bool get isChat => type == AdvType.chat || type == AdvType.none;
@@ -79,6 +81,7 @@ class MeshContact {
         .join();
     return a;
   }
+
   /// Round-trip path for a trace ping: the known route out to this contact,
   /// then back along the reverse route (excluding the destination), so the
   /// final SNR lands at our own node and the node pushes TRACE_DATA to us.
@@ -99,11 +102,12 @@ class MeshContact {
     return path;
   }
 
-
   DateTime? get lastHeard {
     if (lastAdvert == null || lastAdvert == 0) return null;
-    return DateTime.fromMillisecondsSinceEpoch(lastAdvert! * 1000, isUtc: true)
-        .toLocal();
+    return DateTime.fromMillisecondsSinceEpoch(
+      lastAdvert! * 1000,
+      isUtc: true,
+    ).toLocal();
   }
 
   MeshContact copyWith({

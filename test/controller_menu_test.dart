@@ -18,9 +18,9 @@ void main() {
   });
 
   MeshContact contact(String name, int seed) => MeshContact(
-        name: name,
-        publicKey: List<int>.generate(32, (i) => (seed * 7 + i) & 0xFF),
-      );
+    name: name,
+    publicKey: List<int>.generate(32, (i) => (seed * 7 + i) & 0xFF),
+  );
 
   test('deleteChannel frees the slot and clears mute state', () async {
     final fake = FakeCompanion();
@@ -79,7 +79,12 @@ void main() {
       testSession(
         fake,
         conversations: [
-          Conversation(id: 'ch0', title: 'Public', isChannel: true, channelIdx: 0),
+          Conversation(
+            id: 'ch0',
+            title: 'Public',
+            isChannel: true,
+            channelIdx: 0,
+          ),
           Conversation(
             id: 'anna',
             title: 'Anna',
@@ -99,24 +104,32 @@ void main() {
     );
 
     app.toggleBlockedContact(anna.keyHex);
-    fake.emitPacket(IncomingPacket(
-      kind: IncomingKind.text,
-      fromChannel: false,
-      senderPrefix: Uint8List.fromList(anna.publicKey.take(6).toList()),
-      text: 'Hallo Block',
-      timestamp: 1,
-    ));
-    fake.emitPacket(IncomingPacket(
-      kind: IncomingKind.text,
-      fromChannel: false,
-      senderPrefix: Uint8List.fromList(ben.publicKey.take(6).toList()),
-      text: 'Hallo Ben',
-      timestamp: 2,
-    ));
+    fake.emitPacket(
+      IncomingPacket(
+        kind: IncomingKind.text,
+        fromChannel: false,
+        senderPrefix: Uint8List.fromList(anna.publicKey.take(6).toList()),
+        text: 'Hallo Block',
+        timestamp: 1,
+      ),
+    );
+    fake.emitPacket(
+      IncomingPacket(
+        kind: IncomingKind.text,
+        fromChannel: false,
+        senderPrefix: Uint8List.fromList(ben.publicKey.take(6).toList()),
+        text: 'Hallo Ben',
+        timestamp: 2,
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 10));
 
-    final annaConv = app.session!.conversations.firstWhere((c) => c.title == 'Anna');
-    final benConv = app.session!.conversations.firstWhere((c) => c.title == 'Ben');
+    final annaConv = app.session!.conversations.firstWhere(
+      (c) => c.title == 'Anna',
+    );
+    final benConv = app.session!.conversations.firstWhere(
+      (c) => c.title == 'Ben',
+    );
     expect(annaConv.messages, isEmpty);
     expect(benConv.messages, hasLength(1));
     expect(benConv.messages.first.text, 'Hallo Ben');
@@ -131,13 +144,15 @@ void main() {
     final app = AppController();
     addTearDown(app.dispose);
     app.attachSession(testSession(fake));
-    fake.emitPacket(IncomingPacket(
-      kind: IncomingKind.text,
-      fromChannel: false,
-      senderPrefix: Uint8List.fromList(anna.publicKey.take(6).toList()),
-      text: 'Hi Anna-DM',
-      timestamp: 100,
-    ));
+    fake.emitPacket(
+      IncomingPacket(
+        kind: IncomingKind.text,
+        fromChannel: false,
+        senderPrefix: Uint8List.fromList(anna.publicKey.take(6).toList()),
+        text: 'Hi Anna-DM',
+        timestamp: 100,
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 10));
 
     final dm = app.session!.conversations.where((c) => !c.isChannel).toList();
@@ -150,18 +165,22 @@ void main() {
   });
 
   test('DM from unknown sender lands in prefix placeholder convo', () async {
-    final fake = FakeCompanion(channels: [MeshChannel(index: 0, name: 'Public')]);
+    final fake = FakeCompanion(
+      channels: [MeshChannel(index: 0, name: 'Public')],
+    );
     final app = AppController();
     addTearDown(app.dispose);
     app.attachSession(testSession(fake));
     final prefix = [0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01];
-    fake.emitPacket(IncomingPacket(
-      kind: IncomingKind.text,
-      fromChannel: false,
-      senderPrefix: Uint8List.fromList(prefix),
-      text: 'Wen bin ich?',
-      timestamp: 101,
-    ));
+    fake.emitPacket(
+      IncomingPacket(
+        kind: IncomingKind.text,
+        fromChannel: false,
+        senderPrefix: Uint8List.fromList(prefix),
+        text: 'Wen bin ich?',
+        timestamp: 101,
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 10));
 
     final dm = app.session!.conversations.where((c) => !c.isChannel).toList();

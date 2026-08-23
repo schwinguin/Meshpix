@@ -77,14 +77,18 @@ class ChatMessage {
   bool get hasChannelTracking => channelAcks.isNotEmpty;
   int get channelKnown => channelAcks.length;
   int get channelGot => channelAcks
-      .where((a) =>
-          a.state == ChannelPeerState.live ||
-          a.state == ChannelPeerState.delivered)
+      .where(
+        (a) =>
+            a.state == ChannelPeerState.live ||
+            a.state == ChannelPeerState.delivered,
+      )
       .length;
   int get channelPending => channelAcks
-      .where((a) =>
-          a.state == ChannelPeerState.pending ||
-          a.state == ChannelPeerState.replayed)
+      .where(
+        (a) =>
+            a.state == ChannelPeerState.pending ||
+            a.state == ChannelPeerState.replayed,
+      )
       .length;
 
   String get channelTrackLabel {
@@ -93,9 +97,11 @@ class ChatMessage {
       return 'Flood · $channelGot/$channelKnown gehört';
     }
     final missing = channelAcks
-        .where((a) =>
-            a.state == ChannelPeerState.pending ||
-            a.state == ChannelPeerState.replayed)
+        .where(
+          (a) =>
+              a.state == ChannelPeerState.pending ||
+              a.state == ChannelPeerState.replayed,
+        )
         .map((a) => a.name)
         .join(', ');
     return 'Flood · $channelGot/$channelKnown gehört ($missing fehlt)';
@@ -179,8 +185,8 @@ class Conversation {
   ChatMessage? get lastMessage => messages.isEmpty ? null : messages.last;
 
   bool get hasPendingCatchUp => messages.any(
-        (m) => m.outgoing && m.hasChannelTracking && m.channelPending > 0,
-      );
+    (m) => m.outgoing && m.hasChannelTracking && m.channelPending > 0,
+  );
 
   String? get preview {
     final m = lastMessage;

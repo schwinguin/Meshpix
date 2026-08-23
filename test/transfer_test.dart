@@ -43,7 +43,11 @@ class FakeRadio implements PacketRadio {
   Future<void> dispose() => _incoming.close();
 }
 
-IncomingPacket meshPix(Uint8List payload, {bool channel = false, Uint8List? from}) {
+IncomingPacket meshPix(
+  Uint8List payload, {
+  bool channel = false,
+  Uint8List? from,
+}) {
   return IncomingPacket(
     kind: IncomingKind.meshPix,
     fromChannel: channel,
@@ -74,7 +78,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(sent.chunks, isEmpty);
     expect(radio.sentDatagrams.length, 1);
-    final parsed = Mp1Codec().parse(radio.sentDatagrams.single) as PreviewPacket;
+    final parsed =
+        Mp1Codec().parse(radio.sentDatagrams.single) as PreviewPacket;
     expect(parsed.image.upgradeChunks, 0);
     await engine.dispose();
     await radio.dispose();
@@ -135,7 +140,9 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     // Pull went to bobRadio.sent - need to inject into Alice
     for (final p in List<Uint8List>.from(bobRadio.sentDatagrams)) {
-      aliceRadio.inject(meshPix(p, from: Uint8List.fromList([1, 2, 3, 4, 5, 6])));
+      aliceRadio.inject(
+        meshPix(p, from: Uint8List.fromList([1, 2, 3, 4, 5, 6])),
+      );
     }
     bobRadio.sentDatagrams.clear();
     await Future<void>.delayed(const Duration(milliseconds: 40));
@@ -144,12 +151,17 @@ void main() {
     bob.nackMissing(77);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     for (final p in List<Uint8List>.from(bobRadio.sentDatagrams)) {
-      aliceRadio.inject(meshPix(p, from: Uint8List.fromList([1, 2, 3, 4, 5, 6])));
+      aliceRadio.inject(
+        meshPix(p, from: Uint8List.fromList([1, 2, 3, 4, 5, 6])),
+      );
     }
     await Future<void>.delayed(const Duration(milliseconds: 40));
     await pumpAliceToBob();
 
-    expect(bobEvents.any((e) => e.message.startsWith('Bild vollständig')), isTrue);
+    expect(
+      bobEvents.any((e) => e.message.startsWith('Bild vollständig')),
+      isTrue,
+    );
 
     await alice.dispose();
     await bob.dispose();

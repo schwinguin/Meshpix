@@ -19,7 +19,10 @@ void main() {
         transferId: 7,
       ),
     );
-    expect(encoded.preview.bytes.length, lessThanOrEqualTo(kMaxDatagramPayload));
+    expect(
+      encoded.preview.bytes.length,
+      lessThanOrEqualTo(kMaxDatagramPayload),
+    );
     expect(encoded.stats.previewWidth, 24);
     expect(encoded.stats.previewBpp, 2);
     expect(encoded.chunks, isEmpty);
@@ -35,9 +38,15 @@ void main() {
         transferId: 8,
       ),
     );
-    expect(encoded.preview.bytes.length, lessThanOrEqualTo(kMaxDatagramPayload));
+    expect(
+      encoded.preview.bytes.length,
+      lessThanOrEqualTo(kMaxDatagramPayload),
+    );
     final parsed = codec.parse(encoded.preview.bytes) as PreviewPacket;
-    expect(parsed.image.indices.length, parsed.image.width * parsed.image.height);
+    expect(
+      parsed.image.indices.length,
+      parsed.image.width * parsed.image.height,
+    );
     expect(parsed.image.indices.every((i) => i >= 0 && i < 16), isTrue);
   });
 
@@ -108,7 +117,10 @@ void main() {
       ),
     );
     expect(encoded.chunks, isEmpty);
-    expect(encoded.preview.bytes.length, lessThanOrEqualTo(kMaxDatagramPayload));
+    expect(
+      encoded.preview.bytes.length,
+      lessThanOrEqualTo(kMaxDatagramPayload),
+    );
     expect(encoded.stats.previewWidth, greaterThan(0));
   });
 
@@ -148,9 +160,14 @@ void main() {
   });
 
   test('truncated packets throw instead of crashing', () {
-    expect(() => codec.parse(Uint8List.fromList([1, 2, 3])), throwsA(isA<Mp1Exception>()));
     expect(
-      () => codec.parse(Uint8List.fromList([kMp1Magic0, kMp1Magic1, kMp1Version, 0, 0, 0])),
+      () => codec.parse(Uint8List.fromList([1, 2, 3])),
+      throwsA(isA<Mp1Exception>()),
+    );
+    expect(
+      () => codec.parse(
+        Uint8List.fromList([kMp1Magic0, kMp1Magic1, kMp1Version, 0, 0, 0]),
+      ),
       throwsA(isA<Mp1Exception>()),
     );
   });

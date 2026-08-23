@@ -1,9 +1,5 @@
 class MeshChannel {
-  MeshChannel({
-    required this.index,
-    required this.name,
-    this.secret,
-  });
+  MeshChannel({required this.index, required this.name, this.secret});
 
   final int index;
   final String name;

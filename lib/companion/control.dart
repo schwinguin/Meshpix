@@ -7,11 +7,7 @@ import '../models/signal.dart';
 import '../models/repeater.dart';
 
 class TxReceipt {
-  const TxReceipt({
-    this.expectedAck,
-    this.flooded = false,
-    this.timeoutMs,
-  });
+  const TxReceipt({this.expectedAck, this.flooded = false, this.timeoutMs});
 
   final int? expectedAck;
   final bool flooded;
@@ -35,99 +31,99 @@ class CompanionNotice {
   });
 
   CompanionNotice.advert(this.contact)
-      : kind = CompanionNoticeKind.advert,
-        ackCode = null,
-        rttMs = null,
-        statusSummary = null,
-        pubkey = contact?.publicKey,
-        loginOk = null,
-        isAdmin = null,
-        permissions = null,
-        cliText = null,
-        repeaterStatus = null,
-        trace = null;
+    : kind = CompanionNoticeKind.advert,
+      ackCode = null,
+      rttMs = null,
+      statusSummary = null,
+      pubkey = contact?.publicKey,
+      loginOk = null,
+      isAdmin = null,
+      permissions = null,
+      cliText = null,
+      repeaterStatus = null,
+      trace = null;
 
   CompanionNotice.ack({required int this.ackCode, required int this.rttMs})
-      : kind = CompanionNoticeKind.ack,
-        contact = null,
-        statusSummary = null,
-        pubkey = null,
-        loginOk = null,
-        isAdmin = null,
-        permissions = null,
-        cliText = null,
-        repeaterStatus = null,
-        trace = null;
+    : kind = CompanionNoticeKind.ack,
+      contact = null,
+      statusSummary = null,
+      pubkey = null,
+      loginOk = null,
+      isAdmin = null,
+      permissions = null,
+      cliText = null,
+      repeaterStatus = null,
+      trace = null;
 
   CompanionNotice.status({
     required List<int> prefix,
     required this.statusSummary,
     this.repeaterStatus,
     this.rttMs,
-  })  : kind = CompanionNoticeKind.status,
-        contact = null,
-        ackCode = null,
-        pubkey = prefix,
-        loginOk = null,
-        isAdmin = null,
-        permissions = null,
-        cliText = null,
-        trace = null;
+  }) : kind = CompanionNoticeKind.status,
+       contact = null,
+       ackCode = null,
+       pubkey = prefix,
+       loginOk = null,
+       isAdmin = null,
+       permissions = null,
+       cliText = null,
+       trace = null;
 
   CompanionNotice.pathUpdated(this.pubkey)
-      : kind = CompanionNoticeKind.pathUpdated,
-        contact = null,
-        ackCode = null,
-        rttMs = null,
-        statusSummary = null,
-        loginOk = null,
-        isAdmin = null,
-        permissions = null,
-        cliText = null,
-        repeaterStatus = null,
-        trace = null;
+    : kind = CompanionNoticeKind.pathUpdated,
+      contact = null,
+      ackCode = null,
+      rttMs = null,
+      statusSummary = null,
+      loginOk = null,
+      isAdmin = null,
+      permissions = null,
+      cliText = null,
+      repeaterStatus = null,
+      trace = null;
 
   CompanionNotice.login({
     required List<int> prefix,
     required bool ok,
     this.isAdmin,
     this.permissions,
-  })  : kind = ok ? CompanionNoticeKind.login : CompanionNoticeKind.loginFail,
-        contact = null,
-        ackCode = null,
-        rttMs = null,
-        statusSummary = null,
-        pubkey = prefix,
-        loginOk = null,
-        cliText = null,
-        repeaterStatus = null,
-        trace = null;
+  }) : kind = ok ? CompanionNoticeKind.login : CompanionNoticeKind.loginFail,
+       contact = null,
+       ackCode = null,
+       rttMs = null,
+       statusSummary = null,
+       pubkey = prefix,
+       loginOk = null,
+       cliText = null,
+       repeaterStatus = null,
+       trace = null;
 
   CompanionNotice.cli({required List<int> prefix, required this.cliText})
-      : kind = CompanionNoticeKind.cli,
-        contact = null,
-        ackCode = null,
-        rttMs = null,
-        statusSummary = null,
-        pubkey = prefix,
-        loginOk = null,
-        isAdmin = null,
-        permissions = null,
-        repeaterStatus = null,
-        trace = null;
+    : kind = CompanionNoticeKind.cli,
+      contact = null,
+      ackCode = null,
+      rttMs = null,
+      statusSummary = null,
+      pubkey = prefix,
+      loginOk = null,
+      isAdmin = null,
+      permissions = null,
+      repeaterStatus = null,
+      trace = null;
 
   CompanionNotice.trace({required this.trace, List<int>? prefix})
-      : kind = CompanionNoticeKind.trace,
-        contact = null,
-        ackCode = null,
-        rttMs = null,
-        statusSummary = null,
-        pubkey = prefix,
-        loginOk = null,
-        isAdmin = null,
-        permissions = null,
-        cliText = null,
-        repeaterStatus = null;
+    : kind = CompanionNoticeKind.trace,
+      contact = null,
+      ackCode = null,
+      rttMs = null,
+      statusSummary = null,
+      pubkey = prefix,
+      loginOk = null,
+      isAdmin = null,
+      permissions = null,
+      cliText = null,
+      repeaterStatus = null;
 
   final CompanionNoticeKind kind;
   final MeshContact? contact;
@@ -182,9 +178,11 @@ abstract class CompanionControl {
   Future<void> requestTelemetry(MeshContact contact);
   Future<void> tracePath(MeshContact contact, {int? tag, int? flags});
   Future<void> setChannel(int idx, String name, Uint8List secret);
+
   /// Kanal löschen: `setChannel(idx, "", 0…0)` — leeres Name + Null-Secret
   /// verwandelt den Slot in einen leeren "dead" Slot.
   Future<void> deleteChannel(int idx);
+
   /// `[0x33, "reset"]` — das Gerät startet neu, ohne OK-Frame.
   Future<void> factoryReset();
 }

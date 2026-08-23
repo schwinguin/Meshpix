@@ -86,11 +86,7 @@ ParsedFrame? parseCompanionFrame(Uint8List d, {required int meshPixDataType}) {
       return ParsedFrame(code, receipt: _parseSent(d));
     case Resp.sendConfirmed:
       if (d.length < 9) return ParsedFrame(code);
-      return ParsedFrame(
-        code,
-        ackCode: readU32(d, 1),
-        rttMs: readU32(d, 5),
-      );
+      return ParsedFrame(code, ackCode: readU32(d, 1), rttMs: readU32(d, 5));
     case Resp.deviceInfo:
       return ParsedFrame(code, firmware: _parseDeviceInfo(d));
     case Resp.selfInfo:
@@ -121,10 +117,16 @@ ParsedFrame? parseCompanionFrame(Uint8List d, {required int meshPixDataType}) {
       return ParsedFrame(code, channel: _parseChannel(d));
     case Resp.contactMsgRecv:
     case Resp.contactMsgRecvV3:
-      return ParsedFrame(code, incoming: _parseContactText(d, v3: code == Resp.contactMsgRecvV3));
+      return ParsedFrame(
+        code,
+        incoming: _parseContactText(d, v3: code == Resp.contactMsgRecvV3),
+      );
     case Resp.channelMsgRecv:
     case Resp.channelMsgRecvV3:
-      return ParsedFrame(code, incoming: _parseChannelText(d, v3: code == Resp.channelMsgRecvV3));
+      return ParsedFrame(
+        code,
+        incoming: _parseChannelText(d, v3: code == Resp.channelMsgRecvV3),
+      );
     case Resp.channelDataRecv:
       return ParsedFrame(
         code,
@@ -217,7 +219,10 @@ DeviceSelf _parseSelf(Uint8List d) {
   }
   const nameOff = 58;
   final name = d.length > nameOff
-      ? utf8.decode(d.sublist(nameOff), allowMalformed: true).replaceAll('\u0000', '').trim()
+      ? utf8
+            .decode(d.sublist(nameOff), allowMalformed: true)
+            .replaceAll('\u0000', '')
+            .trim()
       : 'MeshCore';
   return DeviceSelf(
     name: name.isEmpty ? 'MeshCore' : name,
@@ -383,8 +388,8 @@ IncomingPacket _parseChannelData(Uint8List d, {required int meshPixDataType}) {
   final kind = dataType == meshPixDataType
       ? IncomingKind.meshPix
       : dataType == kMeshPixCatchType
-          ? IncomingKind.catchUp
-          : IncomingKind.unknown;
+      ? IncomingKind.catchUp
+      : IncomingKind.unknown;
   return IncomingPacket(
     kind: kind,
     fromChannel: true,
@@ -404,20 +409,21 @@ IncomingPacket _parseRawData(Uint8List d, {required int meshPixDataType}) {
   final snr = readI8(d[1]) / 4.0;
   final rssi = readI8(d[2]);
   final payload = d.sublist(4);
-  final looksMp = payload.length >= 2 && payload[0] == 0x4D && payload[1] == 0x50;
+  final looksMp =
+      payload.length >= 2 && payload[0] == 0x4D && payload[1] == 0x50;
   final looksCatch = looksLikeCatchUp(payload);
   return IncomingPacket(
     kind: looksCatch
         ? IncomingKind.catchUp
         : looksMp
-            ? IncomingKind.meshPix
-            : IncomingKind.unknown,
+        ? IncomingKind.meshPix
+        : IncomingKind.unknown,
     fromChannel: false,
     dataType: looksCatch
         ? kMeshPixCatchType
         : looksMp
-            ? meshPixDataType
-            : null,
+        ? meshPixDataType
+        : null,
     payload: payload,
     snr: snr,
     rssi: rssi,
@@ -425,7 +431,8 @@ IncomingPacket _parseRawData(Uint8List d, {required int meshPixDataType}) {
 }
 
 RepeaterStatus _parseRepeaterStatusFrame(Uint8List d) {
-  if (d.length < 8) return const RepeaterStatus(rawSummary: 'Antwort empfangen');
+  if (d.length < 8)
+    return const RepeaterStatus(rawSummary: 'Antwort empfangen');
   return parseRepeaterStatus(d.sublist(8));
 }
 

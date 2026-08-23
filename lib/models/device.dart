@@ -107,11 +107,7 @@ class RadioPreset {
 }
 
 class BatteryInfo {
-  const BatteryInfo({
-    required this.milliVolts,
-    this.usedKb,
-    this.totalKb,
-  });
+  const BatteryInfo({required this.milliVolts, this.usedKb, this.totalKb});
 
   final int milliVolts;
   final int? usedKb;

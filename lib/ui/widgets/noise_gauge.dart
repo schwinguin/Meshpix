@@ -60,7 +60,10 @@ class NoiseGauge extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     'Gemessen an $source (Status/Ping), nicht am Handy.',
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF9AA0A6)),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF9AA0A6),
+                    ),
                   ),
                 ),
             ] else

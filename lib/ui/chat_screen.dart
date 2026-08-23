@@ -203,9 +203,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _openContact(MeshContact c, BuildContext context, AppController app) {
     Navigator.push(
       context,
-      MaterialPageRoute<void>(
-        builder: (_) => ContactDetailScreen(contact: c),
-      ),
+      MaterialPageRoute<void>(builder: (_) => ContactDetailScreen(contact: c)),
     );
   }
 }
@@ -217,8 +215,12 @@ class _Bubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final align = message.outgoing ? Alignment.centerRight : Alignment.centerLeft;
-    final bg = message.outgoing ? meshTeal.withValues(alpha: 0.35) : const Color(0xFF2A2D36);
+    final align = message.outgoing
+        ? Alignment.centerRight
+        : Alignment.centerLeft;
+    final bg = message.outgoing
+        ? meshTeal.withValues(alpha: 0.35)
+        : const Color(0xFF2A2D36);
     return Align(
       alignment: align,
       child: Container(
@@ -291,10 +293,7 @@ class _Bubble extends StatelessWidget {
                 ),
               ),
             ] else if (onPull != null)
-              TextButton(
-                onPressed: onPull,
-                child: const Text('Nachladen'),
-              ),
+              TextButton(onPressed: onPull, child: const Text('Nachladen')),
           ],
         ),
       ),

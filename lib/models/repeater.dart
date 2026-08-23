@@ -4,7 +4,7 @@ enum CliLineKind { sent, reply, error, info }
 
 class CliLine {
   CliLine({required this.kind, required this.text, DateTime? at})
-      : at = at ?? DateTime.now();
+    : at = at ?? DateTime.now();
 
   final CliLineKind kind;
   final String text;
@@ -12,11 +12,7 @@ class CliLine {
 }
 
 class RepeaterNeighbor {
-  RepeaterNeighbor({
-    required this.prefixHex,
-    this.heard,
-    this.snr,
-  });
+  RepeaterNeighbor({required this.prefixHex, this.heard, this.snr});
 
   final String prefixHex;
   final DateTime? heard;
@@ -130,7 +126,10 @@ List<RepeaterNeighbor> parseNeighborsReply(String text) {
         prefixHex: hex,
         heard: epoch == null
             ? null
-            : DateTime.fromMillisecondsSinceEpoch(epoch * 1000, isUtc: true).toLocal(),
+            : DateTime.fromMillisecondsSinceEpoch(
+                epoch * 1000,
+                isUtc: true,
+              ).toLocal(),
         snr: snr,
       ),
     );
@@ -139,8 +138,10 @@ List<RepeaterNeighbor> parseNeighborsReply(String text) {
 }
 
 bool isDangerCli(String command) {
-  return RegExp(r'\b(reboot|erase|clkreboot|factory)\b(?!\.)', caseSensitive: false)
-      .hasMatch(command.trim());
+  return RegExp(
+    r'\b(reboot|erase|clkreboot|factory)\b(?!\.)',
+    caseSensitive: false,
+  ).hasMatch(command.trim());
 }
 
 const repeaterQuickActions = <String>[

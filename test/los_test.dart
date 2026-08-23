@@ -30,18 +30,11 @@ void main() {
 
     const from = GeoPoint(lat: 48.14, lon: 11.58, elevM: 500, aglM: 15);
     const to = GeoPoint(lat: 48.15, lon: 11.61, elevM: 510, aglM: 15);
-    final clear = analyzeLos(
-      from: from,
-      to: to,
-      fromName: 'A',
-      toName: 'B',
-    );
+    final clear = analyzeLos(from: from, to: to, fromName: 'A', toName: 'B');
     expect(clear.verdict, LosVerdict.clear);
 
     final n = clear.samples.length;
-    final ridge = [
-      for (var i = 0; i < n; i++) i == n ~/ 2 ? 2500.0 : 500.0,
-    ];
+    final ridge = [for (var i = 0; i < n; i++) i == n ~/ 2 ? 2500.0 : 500.0];
     final blocked = analyzeLos(
       from: from,
       to: to,

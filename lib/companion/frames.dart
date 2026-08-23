@@ -5,8 +5,12 @@ import '../models/contact.dart';
 import '../models/device.dart';
 import 'constants.dart';
 
-Uint8List _u32(int v) =>
-    Uint8List.fromList([v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF]);
+Uint8List _u32(int v) => Uint8List.fromList([
+  v & 0xFF,
+  (v >> 8) & 0xFF,
+  (v >> 16) & 0xFF,
+  (v >> 24) & 0xFF,
+]);
 
 Uint8List _i32(int v) => _u32(v);
 
@@ -65,13 +69,13 @@ Uint8List cmdSetAdvertName(String name) =>
 Uint8List cmdGetBattAndStorage() => Uint8List.fromList([Cmd.getBattAndStorage]);
 
 Uint8List cmdSetRadioParams(RadioSettings s) => Uint8List.fromList([
-      Cmd.setRadioParams,
-      ..._u32(s.freqWire),
-      ..._u32(s.bwWire),
-      s.spreadingFactor,
-      s.codingRate,
-      s.repeatMode ? 1 : 0,
-    ]);
+  Cmd.setRadioParams,
+  ..._u32(s.freqWire),
+  ..._u32(s.bwWire),
+  s.spreadingFactor,
+  s.codingRate,
+  s.repeatMode ? 1 : 0,
+]);
 
 Uint8List cmdSetRadioTxPower(int dbm) =>
     Uint8List.fromList([Cmd.setRadioTxPower, dbm & 0xFF]);
@@ -105,13 +109,13 @@ Uint8List cmdRemoveContact(List<int> publicKey) =>
 /// Factory reset: `[0x33, "reset"]`. Kein OK-Frame — das Gerät deaktiviert
 /// die serielle Schnittstelle (BLE) direkt vor dem Reset.
 Uint8List cmdFactoryReset() => Uint8List.fromList([
-      Cmd.factoryReset,
-      0x72, // 'r'
-      0x65, // 'e'
-      0x73, // 's'
-      0x65, // 'e'
-      0x74, // 't'
-    ]);
+  Cmd.factoryReset,
+  0x72, // 'r'
+  0x65, // 'e'
+  0x73, // 's'
+  0x65, // 'e'
+  0x74, // 't'
+]);
 
 Uint8List cmdShareContact(List<int> publicKey) =>
     Uint8List.fromList([Cmd.shareContact, ..._pad(publicKey, 32)]);
@@ -214,10 +218,7 @@ Uint8List cmdSendChannelData({
   return out.takeBytes();
 }
 
-Uint8List cmdSendRawData({
-  required Uint8List payload,
-  Uint8List? path,
-}) {
+Uint8List cmdSendRawData({required Uint8List payload, Uint8List? path}) {
   final p = path ?? Uint8List(0);
   return Uint8List.fromList([Cmd.sendRawData, p.length, ...p, ...payload]);
 }

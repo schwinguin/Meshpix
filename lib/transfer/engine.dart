@@ -289,7 +289,9 @@ class TransferEngine {
     if (packet.kind == IncomingKind.catchUp ||
         packet.dataType == kMeshPixCatchType ||
         (packet.payload != null && looksLikeCatchUp(packet.payload!))) {
-      final parsed = packet.payload == null ? null : decodeCatchUp(packet.payload!);
+      final parsed = packet.payload == null
+          ? null
+          : decodeCatchUp(packet.payload!);
       if (parsed == null) return;
       _events.add(
         TransferEvent(
@@ -396,7 +398,10 @@ class TransferEngine {
       case NackPacket p:
         final offer = _offers[p.transferId];
         if (offer == null) return;
-        for (final seq in seqsFromMask(p.missingMask, offer.encoded.chunks.length)) {
+        for (final seq in seqsFromMask(
+          p.missingMask,
+          offer.encoded.chunks.length,
+        )) {
           if (seq < 0 || seq >= offer.encoded.chunks.length) continue;
           _enqueue(
             QueuedTx(

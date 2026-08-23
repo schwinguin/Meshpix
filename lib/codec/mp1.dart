@@ -173,8 +173,9 @@ class EncodeStats {
     if (chunkCount == 0) {
       return '1 Paket Preview ($previewWidth×$previewWidth, $previewBpp bit)';
     }
-    final kind =
-        upgradeEncoding == BodyEncoding.jpeg ? 'JPEG-Nachzug' : 'Nachzug';
+    final kind = upgradeEncoding == BodyEncoding.jpeg
+        ? 'JPEG-Nachzug'
+        : 'Nachzug';
     return '1 Paket Preview + $chunkCount Chunks $kind '
         '($upgradeWidth×$upgradeHeight)';
   }
@@ -246,7 +247,12 @@ bool _isMp1(Uint8List b) =>
     b[1] == kMp1Magic1 &&
     b[2] == kMp1Version;
 
-IndexedImage _quantizeTo(RgbaImage src, int size, Palette palette, bool dither) {
+IndexedImage _quantizeTo(
+  RgbaImage src,
+  int size,
+  Palette palette,
+  bool dither,
+) {
   return quantize(src.square(size), palette, dither: dither);
 }
 
@@ -256,12 +262,14 @@ Uint8List _blobFor(IndexedImage img) {
   out.addByte(img.width);
   out.addByte(img.height);
   out.addByte(img.palette.id);
-  out.addByte(_flags(
-    kind: Mp1Kind.preview,
-    encoding: packed.encoding,
-    bitsPerPixel: img.bitsPerPixel,
-    dithered: img.dithered,
-  ));
+  out.addByte(
+    _flags(
+      kind: Mp1Kind.preview,
+      encoding: packed.encoding,
+      bitsPerPixel: img.bitsPerPixel,
+      dithered: img.dithered,
+    ),
+  );
   out.add(packed.bytes);
   return out.takeBytes();
 }
@@ -379,16 +387,15 @@ class Mp1Codec {
 
   final Random _random;
 
-  EncodedTransfer encode(RgbaImage source, {EncodeOptions options = const EncodeOptions()}) {
+  EncodedTransfer encode(
+    RgbaImage source, {
+    EncodeOptions options = const EncodeOptions(),
+  }) {
     final transferId = options.transferId ?? _random.nextInt(0xFFFF);
     final previewPalettes = options.fourColorPreview
         ? <Palette>[mesh4, mesh16]
         : <Palette>[mesh16, mesh4];
-    final sizes = <int>{
-      options.previewSize,
-      24,
-      16,
-    }.toList()
+    final sizes = <int>{options.previewSize, 24, 16}.toList()
       ..sort((a, b) => b.compareTo(a));
 
     PreviewPacket? preview;
@@ -411,7 +418,9 @@ class Mp1Codec {
       if (preview != null) break;
     }
     if (preview == null || previewImg == null) {
-      throw Mp1Exception('could not fit a preview into ${options.maxPayload} bytes');
+      throw Mp1Exception(
+        'could not fit a preview into ${options.maxPayload} bytes',
+      );
     }
     final chosenPreviewImg = previewImg;
 
@@ -421,13 +430,21 @@ class Mp1Codec {
     if (options.includeUpgrade) {
       if (options.jpegUpgrade) {
         jpegSearch:
-        for (final size in ({options.jpegSize, 160, 128, 96}
-              .where((s) => s > chosenPreviewImg.width)
-              .toList()
-            ..sort((a, b) => b.compareTo(a)))) {
+        for (final size
+            in ({
+                options.jpegSize,
+                160,
+                128,
+                96,
+              }.where((s) => s > chosenPreviewImg.width).toList()
+              ..sort((a, b) => b.compareTo(a)))) {
           for (final quality in const [45, 35, 28, 22]) {
             try {
-              final jpg = encodeJpegSquare(source, size: size, quality: quality);
+              final jpg = encodeJpegSquare(
+                source,
+                size: size,
+                quality: quality,
+              );
               blob = _blobForJpeg(size, size, jpg);
               chunks = _chunkBlob(
                 blob: blob,
@@ -446,15 +463,16 @@ class Mp1Codec {
         }
       }
       if (chunks.isEmpty) {
-        final sizes = <int>{
-          options.upgradeSize,
-          96,
-          80,
-          64,
-          48,
-          32,
-        }.where((s) => s > chosenPreviewImg.width).toList()
-          ..sort((a, b) => b.compareTo(a));
+        final sizes =
+            <int>{
+                options.upgradeSize,
+                96,
+                80,
+                64,
+                48,
+                32,
+              }.where((s) => s > chosenPreviewImg.width).toList()
+              ..sort((a, b) => b.compareTo(a));
         upgradeSearch:
         for (final size in sizes) {
           for (final pal in [mesh16, mesh4]) {
@@ -500,8 +518,12 @@ class Mp1Codec {
         previewWidth: chosenPreviewImg.width,
         previewBpp: chosenPreviewImg.bitsPerPixel,
         chunkCount: chunks.length,
-        upgradeWidth: chunks.isEmpty ? chosenPreviewImg.width : (blob.isEmpty ? 0 : blob[0]),
-        upgradeHeight: chunks.isEmpty ? chosenPreviewImg.height : (blob.isEmpty ? 0 : blob[1]),
+        upgradeWidth: chunks.isEmpty
+            ? chosenPreviewImg.width
+            : (blob.isEmpty ? 0 : blob[0]),
+        upgradeHeight: chunks.isEmpty
+            ? chosenPreviewImg.height
+            : (blob.isEmpty ? 0 : blob[1]),
         encoding: packed.encoding,
         upgradeEncoding: chunks.isEmpty ? BodyEncoding.raw : upgradeEncoding,
       ),

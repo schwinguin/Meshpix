@@ -62,10 +62,15 @@ class _PingCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Ping', style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    'Ping',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: app.pingingAll || items.isEmpty ? null : app.pingAll,
+                  onPressed: app.pingingAll || items.isEmpty
+                      ? null
+                      : app.pingAll,
                   icon: app.pingingAll
                       ? const SizedBox(
                           width: 14,
@@ -86,10 +91,13 @@ class _PingCard extends StatelessWidget {
             if (items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('Keine bekannten Nodes. Erst Advert oder Kontakt importieren.'),
+                child: Text(
+                  'Keine bekannten Nodes. Erst Advert oder Kontakt importieren.',
+                ),
               )
             else
-              for (final c in items) _PingTile(contact: c, result: app.pings[c.keyHex]),
+              for (final c in items)
+                _PingTile(contact: c, result: app.pings[c.keyHex]),
           ],
         ),
       ),
@@ -108,10 +116,10 @@ class _PingTile extends StatelessWidget {
     final color = result == null
         ? const Color(0xFF6B7280)
         : result!.inFlight
-            ? meshAmber
-            : result!.ok
-                ? meshTeal
-                : const Color(0xFFE76F51);
+        ? meshAmber
+        : result!.ok
+        ? meshTeal
+        : const Color(0xFFE76F51);
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Stack(
@@ -148,7 +156,9 @@ class _PingTile extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Ping ${contact.name}',
-            onPressed: result?.inFlight == true ? null : () => app.ping(contact),
+            onPressed: result?.inFlight == true
+                ? null
+                : () => app.ping(contact),
             icon: const Icon(Icons.podcasts),
           ),
         ],
@@ -167,9 +177,9 @@ class _LosCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final withFix = items.where((c) => c.hasLocation).toList();
     final focus = withFix.cast<MeshContact?>().firstWhere(
-          (c) => c!.keyHex == app.pathFocusKey,
-          orElse: () => withFix.isEmpty ? null : withFix.first,
-        );
+      (c) => c!.keyHex == app.pathFocusKey,
+      orElse: () => withFix.isEmpty ? null : withFix.first,
+    );
     final los = app.lastLos;
     final self = app.selfPoint();
     return Card(
@@ -214,9 +224,9 @@ class _LosCard extends StatelessWidget {
                     ],
                     onChanged: (key) {
                       final c = withFix.cast<MeshContact?>().firstWhere(
-                            (x) => x!.keyHex == key,
-                            orElse: () => null,
-                          );
+                        (x) => x!.keyHex == key,
+                        orElse: () => null,
+                      );
                       if (c != null) app.computeLos(c);
                     },
                   ),
@@ -263,10 +273,7 @@ class _LosCard extends StatelessWidget {
                   _stat('Distanz', formatKm(los.distanceM)),
                   _stat('Richtung', formatBearing(los.bearing)),
                   _stat('FSPL', '${los.fsplDb.toStringAsFixed(0)} dB'),
-                  _stat(
-                    'Freihalte',
-                    '${los.worstClearanceM.round()} m',
-                  ),
+                  _stat('Freihalte', '${los.worstClearanceM.round()} m'),
                   _stat(
                     'Fresnel',
                     '${(los.minFresnelClearPct * 100).clamp(0, 999).round()} %',
@@ -278,7 +285,10 @@ class _LosCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(los.verdictHint, style: const TextStyle(fontSize: 12, color: meshPaper)),
+              Text(
+                los.verdictHint,
+                style: const TextStyle(fontSize: 12, color: meshPaper),
+              ),
             ] else if (los?.verdict == LosVerdict.noFix)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
@@ -296,7 +306,10 @@ class _LosCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(k, style: const TextStyle(fontSize: 11, color: Color(0xFF9AA0A6))),
+          Text(
+            k,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF9AA0A6)),
+          ),
           Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
         ],
       ),
@@ -330,19 +343,37 @@ class _SelfFix extends StatelessWidget {
           children: [
             Expanded(
               child: TextFormField(
-                initialValue: (app.selfLatOverride ?? app.self?.lat)?.toString() ?? '',
-                decoration: const InputDecoration(labelText: 'Breite', isDense: true),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                onChanged: (v) => app.setSelfFix(lat: double.tryParse(v.replaceAll(',', '.'))),
+                initialValue:
+                    (app.selfLatOverride ?? app.self?.lat)?.toString() ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'Breite',
+                  isDense: true,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                onChanged: (v) => app.setSelfFix(
+                  lat: double.tryParse(v.replaceAll(',', '.')),
+                ),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: TextFormField(
-                initialValue: (app.selfLonOverride ?? app.self?.lon)?.toString() ?? '',
-                decoration: const InputDecoration(labelText: 'Länge', isDense: true),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                onChanged: (v) => app.setSelfFix(lon: double.tryParse(v.replaceAll(',', '.'))),
+                initialValue:
+                    (app.selfLonOverride ?? app.self?.lon)?.toString() ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'Länge',
+                  isDense: true,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                onChanged: (v) => app.setSelfFix(
+                  lon: double.tryParse(v.replaceAll(',', '.')),
+                ),
               ),
             ),
           ],
@@ -351,10 +382,19 @@ class _SelfFix extends StatelessWidget {
           children: [
             Expanded(
               child: TextFormField(
-                initialValue: (app.selfAltOverride ?? app.self?.alt)?.toString() ?? '',
-                decoration: const InputDecoration(labelText: 'Höhe m ü. NN', isDense: true),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                onChanged: (v) => app.setSelfFix(alt: double.tryParse(v.replaceAll(',', '.'))),
+                initialValue:
+                    (app.selfAltOverride ?? app.self?.alt)?.toString() ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'Höhe m ü. NN',
+                  isDense: true,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                onChanged: (v) => app.setSelfFix(
+                  alt: double.tryParse(v.replaceAll(',', '.')),
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -401,7 +441,11 @@ class _VerdictBanner extends StatelessWidget {
       ),
       child: Text(
         result.verdictLabel,
-        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 16),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 16,
+        ),
       ),
     );
   }

@@ -14,11 +14,7 @@ class MeshCoreUri {
       scheme: 'meshcore',
       host: 'contact',
       path: '/add',
-      queryParameters: {
-        'name': name,
-        'public_key': key,
-        'type': '$type',
-      },
+      queryParameters: {'name': name, 'public_key': key, 'type': '$type'},
     ).toString();
   }
 
@@ -28,7 +24,8 @@ class MeshCoreUri {
     final uri = Uri.tryParse(text);
     if (uri == null) return null;
     if (uri.scheme != 'meshcore') return null;
-    final isAdd = (uri.host == 'contact' && uri.path.contains('add')) ||
+    final isAdd =
+        (uri.host == 'contact' && uri.path.contains('add')) ||
         uri.path.contains('contact/add');
     if (!isAdd) return null;
     final name = uri.queryParameters['name'];
@@ -36,7 +33,8 @@ class MeshCoreUri {
     if (name == null || name.isEmpty || keyHex == null) return null;
     final key = bytesFromHex(keyHex);
     if (key.length != 32) return null;
-    final type = int.tryParse(uri.queryParameters['type'] ?? '1') ?? AdvType.chat;
+    final type =
+        int.tryParse(uri.queryParameters['type'] ?? '1') ?? AdvType.chat;
     return MeshContact(publicKey: key, name: name, type: type);
   }
 

@@ -16,7 +16,11 @@ import 'fake_companion.dart';
 void main() {
   test('meshcore:// contact URI round-trips like MeshCore One', () {
     final key = List<int>.generate(32, (i) => i + 1);
-    final uri = MeshCoreUri.contact(name: 'Anna Funk', publicKey: key, type: AdvType.repeater);
+    final uri = MeshCoreUri.contact(
+      name: 'Anna Funk',
+      publicKey: key,
+      type: AdvType.repeater,
+    );
     expect(uri, startsWith('meshcore://'));
     final parsed = MeshCoreUri.parseContact(uri);
     expect(parsed, isNotNull);
@@ -26,7 +30,9 @@ void main() {
   });
 
   test('self-info and contact frames parse radio + last heard', () {
-    final key = Uint8List.fromList(List<int>.generate(32, (i) => 0xA0 + (i % 16)));
+    final key = Uint8List.fromList(
+      List<int>.generate(32, (i) => 0xA0 + (i % 16)),
+    );
     final self = BytesBuilder()
       ..addByte(Resp.selfInfo)
       ..addByte(AdvType.chat)
@@ -44,7 +50,10 @@ void main() {
       ..addByte(11)
       ..addByte(5)
       ..add('Heltec'.codeUnits);
-    final parsed = parseCompanionFrame(self.takeBytes(), meshPixDataType: kMeshPixDataType);
+    final parsed = parseCompanionFrame(
+      self.takeBytes(),
+      meshPixDataType: kMeshPixDataType,
+    );
     expect(parsed?.self?.name, 'Heltec');
     expect(parsed?.self?.radio?.spreadingFactor, 11);
     expect(parsed?.self?.radio?.freqMhz, closeTo(869.525, 0.001));
@@ -55,15 +64,20 @@ void main() {
       ..addByte(AdvType.repeater)
       ..addByte(ContactFlags.favourite)
       ..addByte(2) // path len
-      ..add(Uint8List(64)
-        ..[0] = 0x11
-        ..[1] = 0x22)
+      ..add(
+        Uint8List(64)
+          ..[0] = 0x11
+          ..[1] = 0x22,
+      )
       ..add(Uint8List(32)..setAll(0, 'Relay1'.codeUnits))
       ..add([0x64, 0x00, 0x00, 0x00]) // last advert
       ..add(Uint8List(4))
       ..add(Uint8List(4))
       ..add([0x65, 0x00, 0x00, 0x00]);
-    final c = parseCompanionFrame(contact.takeBytes(), meshPixDataType: kMeshPixDataType)?.contact;
+    final c = parseCompanionFrame(
+      contact.takeBytes(),
+      meshPixDataType: kMeshPixDataType,
+    )?.contact;
     expect(c?.name, 'Relay1');
     expect(c?.type, AdvType.repeater);
     expect(c?.isFavourite, isTrue);
@@ -85,7 +99,10 @@ void main() {
       Resp.battAndStorage,
       0x4C, 0x0F, // 3916 mV
     ]);
-    final b = parseCompanionFrame(batt, meshPixDataType: kMeshPixDataType)?.battery;
+    final b = parseCompanionFrame(
+      batt,
+      meshPixDataType: kMeshPixDataType,
+    )?.battery;
     expect(b?.milliVolts, 3916);
     expect(b?.percent, inInclusiveRange(1, 100));
   });
@@ -143,7 +160,9 @@ void main() {
   });
 
   test('neighbors CLI lines parse like MeshCore One', () {
-    final list = parseNeighborsReply('a1b2c3:1710000000:24\nd4e5f6:1710000100:10\n');
+    final list = parseNeighborsReply(
+      'a1b2c3:1710000000:24\nd4e5f6:1710000100:10\n',
+    );
     expect(list, hasLength(2));
     expect(list.first.prefixHex, 'a1b2c3');
     expect(list.first.snr, 6.0);

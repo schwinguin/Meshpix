@@ -18,6 +18,7 @@ class TraceResult {
   final int flags;
   final List<int> hashes;
   final List<int> snrs;
+
   /// SNR, mit dem das lokale Gerät die letzte Re-Transmit gehört hat.
   final int? finalSnr;
 
@@ -36,9 +37,9 @@ class TraceResult {
   double? get worstSnrDb => _snrDb([...snrs, ?finalSnr]);
 
   /// Empfangsqualität des letzten Hops bei uns, in dB.
-  double? get finalSnrDb => finalSnr == null ? null : (finalSnr! >= 128
-      ? finalSnr! - 256
-      : finalSnr!) / 4;
+  double? get finalSnrDb => finalSnr == null
+      ? null
+      : (finalSnr! >= 128 ? finalSnr! - 256 : finalSnr!) / 4;
 
   String get summary {
     final parts = <String>['Trace · $hopCount Hop${hopCount == 1 ? '' : 's'}'];
@@ -119,11 +120,7 @@ class PingResult {
 }
 
 class NoiseSample {
-  const NoiseSample({
-    required this.dbm,
-    required this.at,
-    this.sourceName,
-  });
+  const NoiseSample({required this.dbm, required this.at, this.sourceName});
 
   final int dbm;
   final DateTime at;

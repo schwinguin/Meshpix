@@ -28,8 +28,9 @@ class ChannelsPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
     final all = app.active.companion?.channels ?? const <MeshChannel>[];
-    final channels =
-        all.where((c) => c.index == 0 || c.name.isNotEmpty).toList();
+    final channels = all
+        .where((c) => c.index == 0 || c.name.isNotEmpty)
+        .toList();
     final free = freeSlot(all);
     return Scaffold(
       body: channels.isEmpty
@@ -53,13 +54,19 @@ class ChannelsPane extends StatelessWidget {
                     app.open(c);
                     Navigator.push(
                       context,
-                      MaterialPageRoute<void>(builder: (_) => const ChatScreen()),
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ChatScreen(),
+                      ),
                     );
                   };
                 }
                 return ListTile(
                   leading: Icon(
-                    ch.isPublic ? Icons.public : private ? Icons.lock_outline : Icons.campaign_outlined,
+                    ch.isPublic
+                        ? Icons.public
+                        : private
+                        ? Icons.lock_outline
+                        : Icons.campaign_outlined,
                     color: ch.isPublic ? meshTeal : meshAmber,
                   ),
                   title: Text(ch.name),
@@ -101,7 +108,10 @@ class ChannelsPane extends StatelessWidget {
                                 : 'Dämpfen',
                           ),
                         ),
-                        const PopupMenuItem(value: 'delete', child: Text('Kanal löschen')),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Kanal löschen'),
+                        ),
                       ],
                     );
                     if (!context.mounted) return;
@@ -113,7 +123,9 @@ class ChannelsPane extends StatelessWidget {
                           context: context,
                           builder: (ctx) => AlertDialog(
                             title: const Text('Kanal löschen?'),
-                            content: Text('„${ch.name}" (Kanal ${ch.index}) wird frei gegeben.'),
+                            content: Text(
+                              '„${ch.name}" (Kanal ${ch.index}) wird frei gegeben.',
+                            ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, false),

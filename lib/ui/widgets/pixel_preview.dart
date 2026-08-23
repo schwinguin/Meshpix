@@ -6,11 +6,7 @@ import 'package:flutter/material.dart';
 import '../../codec/mp1.dart';
 
 class PixelPreview extends StatelessWidget {
-  const PixelPreview({
-    super.key,
-    required this.image,
-    this.size = 160,
-  });
+  const PixelPreview({super.key, required this.image, this.size = 160});
 
   final DecodedImage image;
   final double size;

@@ -49,7 +49,9 @@ class ShareCardSheet extends StatelessWidget {
               await Clipboard.setData(ClipboardData(text: uri));
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('meshcore:// in Zwischenablage')),
+                  const SnackBar(
+                    content: Text('meshcore:// in Zwischenablage'),
+                  ),
                 );
               }
             },

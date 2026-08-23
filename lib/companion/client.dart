@@ -63,7 +63,9 @@ class CompanionClient implements PacketRadio, CompanionControl {
       self = selfFrame!.self;
       radio = self!.radio;
     }
-    await _send(cmdSetDeviceTime(DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000));
+    await _send(
+      cmdSetDeviceTime(DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000),
+    );
     await refreshContacts();
     channels.clear();
     final maxCh = firmware?.maxChannels ?? 8;
@@ -130,12 +132,7 @@ class CompanionClient implements PacketRadio, CompanionControl {
         ),
       );
     } else {
-      await _send(
-        cmdSendRawData(
-          payload: payload,
-          path: destination.path,
-        ),
-      );
+      await _send(cmdSendRawData(payload: payload, path: destination.path));
     }
   }
 
@@ -167,11 +164,7 @@ class CompanionClient implements PacketRadio, CompanionControl {
     await _send(cmdSetChannel(idx, name, secret));
     channels.removeWhere((c) => c.index == idx);
     channels.add(
-      MeshChannel(
-        index: idx,
-        name: name,
-        secret: List<int>.of(secret),
-      ),
+      MeshChannel(index: idx, name: name, secret: List<int>.of(secret)),
     );
   }
 
@@ -193,7 +186,10 @@ class CompanionClient implements PacketRadio, CompanionControl {
 
   @override
   Future<BatteryInfo?> refreshBattery() async {
-    final frame = await _sendExpect(cmdGetBattAndStorage(), Resp.battAndStorage);
+    final frame = await _sendExpect(
+      cmdGetBattAndStorage(),
+      Resp.battAndStorage,
+    );
     battery = frame?.battery ?? battery;
     return battery;
   }
@@ -278,12 +274,12 @@ class CompanionClient implements PacketRadio, CompanionControl {
   }
 
   bool Function(MeshContact) _sameKey(List<int> key) => (c) {
-        if (c.publicKey.length != key.length) return false;
-        for (var i = 0; i < key.length; i++) {
-          if (c.publicKey[i] != key[i]) return false;
-        }
-        return true;
-      };
+    if (c.publicKey.length != key.length) return false;
+    for (var i = 0; i < key.length; i++) {
+      if (c.publicKey[i] != key[i]) return false;
+    }
+    return true;
+  };
 
   Future<void> _send(Uint8List frame) => transport.write(frame);
 
@@ -303,9 +299,12 @@ class CompanionClient implements PacketRadio, CompanionControl {
   Future<void> _drainUntil(int code) async {
     _awaiting = Completer<ParsedFrame>();
     _awaitCode = code;
-    await _awaiting!.future.timeout(const Duration(seconds: 3), onTimeout: () {
-      return ParsedFrame(code);
-    });
+    await _awaiting!.future.timeout(
+      const Duration(seconds: 3),
+      onTimeout: () {
+        return ParsedFrame(code);
+      },
+    );
     _awaiting = null;
     _awaitCode = null;
   }
@@ -351,7 +350,9 @@ class CompanionClient implements PacketRadio, CompanionControl {
       }
     }
     if (parsed.ackCode != null) {
-      _notices.add(CompanionNotice.ack(ackCode: parsed.ackCode!, rttMs: parsed.rttMs ?? 0));
+      _notices.add(
+        CompanionNotice.ack(ackCode: parsed.ackCode!, rttMs: parsed.rttMs ?? 0),
+      );
     }
     if (parsed.loginOk != null) {
       _notices.add(
@@ -374,10 +375,7 @@ class CompanionClient implements PacketRadio, CompanionControl {
     }
     if (parsed.trace != null) {
       _notices.add(
-        CompanionNotice.trace(
-          trace: parsed.trace,
-          prefix: parsed.advertKey,
-        ),
+        CompanionNotice.trace(trace: parsed.trace, prefix: parsed.advertKey),
       );
     }
     if (parsed.advertKey != null &&
@@ -390,7 +388,9 @@ class CompanionClient implements PacketRadio, CompanionControl {
     if (parsed.code == Resp.msgWaiting) {
       unawaited(syncMessages());
     }
-    if (_awaitCode != null && parsed.code == _awaitCode && !(_awaiting?.isCompleted ?? true)) {
+    if (_awaitCode != null &&
+        parsed.code == _awaitCode &&
+        !(_awaiting?.isCompleted ?? true)) {
       _awaiting!.complete(parsed);
     }
   }

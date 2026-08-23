@@ -88,7 +88,10 @@ class _RepeaterAdminScreenState extends State<RepeaterAdminScreen> {
             if (session.lastError != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(session.lastError!, style: const TextStyle(color: Colors.redAccent)),
+                child: Text(
+                  session.lastError!,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
               ),
           ] else ...[
             Wrap(
@@ -196,7 +199,10 @@ class _RepeaterAdminScreenState extends State<RepeaterAdminScreen> {
               ],
             ),
             const Divider(height: 28),
-            Text('ACL (setperm)', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'ACL (setperm)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             TextField(
               controller: _aclKey,
               decoration: const InputDecoration(
@@ -250,7 +256,10 @@ class _RepeaterAdminScreenState extends State<RepeaterAdminScreen> {
             'Tippe den Namen zur Bestätigung.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Abbrechen'),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Ausführen'),
@@ -304,10 +313,23 @@ class _StatusCard extends StatelessWidget {
           spacing: 16,
           runSpacing: 10,
           children: [
-            _stat('Batterie', status.volts == null ? '—' : '${status.volts!.toStringAsFixed(2)} V'),
+            _stat(
+              'Batterie',
+              status.volts == null
+                  ? '—'
+                  : '${status.volts!.toStringAsFixed(2)} V',
+            ),
             _stat('Uptime', status.uptimeLabel),
-            _stat('Noise', status.noiseFloor == null ? '—' : '${status.noiseFloor} dBm'),
-            _stat('SNR', status.lastSnr == null ? '—' : '${status.lastSnr!.toStringAsFixed(1)} dB'),
+            _stat(
+              'Noise',
+              status.noiseFloor == null ? '—' : '${status.noiseFloor} dBm',
+            ),
+            _stat(
+              'SNR',
+              status.lastSnr == null
+                  ? '—'
+                  : '${status.lastSnr!.toStringAsFixed(1)} dB',
+            ),
             _stat('RX', '${status.packetsRecv ?? '—'}'),
             _stat('TX', '${status.packetsSent ?? '—'}'),
             _stat('Queue', '${status.queueLen ?? '—'}'),

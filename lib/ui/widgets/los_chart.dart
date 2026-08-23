@@ -56,8 +56,7 @@ class _LosPainter extends CustomPainter {
     minY -= (maxY - minY) * 0.08;
     maxY += (maxY - minY) * 0.12;
 
-    double xAt(int i) =>
-        padL + w * i / max(1, samples.length - 1);
+    double xAt(int i) => padL + w * i / max(1, samples.length - 1);
     double yAt(double m) => padT + h * (1 - (m - minY) / (maxY - minY));
 
     final terrain = Path()
@@ -89,7 +88,10 @@ class _LosPainter extends CustomPainter {
 
     final fresnel = Path();
     for (var i = 0; i < samples.length; i++) {
-      final p = Offset(xAt(i), yAt(samples[i].losM - 0.6 * samples[i].fresnelM));
+      final p = Offset(
+        xAt(i),
+        yAt(samples[i].losM - 0.6 * samples[i].fresnelM),
+      );
       if (i == 0) {
         fresnel.moveTo(p.dx, p.dy);
       } else {
@@ -135,11 +137,20 @@ class _LosPainter extends CustomPainter {
     }
 
     final tip = TextPainter(textDirection: TextDirection.ltr);
-    void label(String t, Offset o, {Color color = meshPaper, double size = 10}) {
+    void label(
+      String t,
+      Offset o, {
+      Color color = meshPaper,
+      double size = 10,
+    }) {
       tip
         ..text = TextSpan(
           text: t,
-          style: TextStyle(color: color, fontSize: size, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: color,
+            fontSize: size,
+            fontWeight: FontWeight.w600,
+          ),
         )
         ..layout();
       tip.paint(canvas, o);
@@ -153,18 +164,14 @@ class _LosPainter extends CustomPainter {
       '${(result.distanceM / 1000).toStringAsFixed(1)} km',
       Offset(padL + w / 2 - 18, padT + h + 6),
     );
-    label(
-      '${maxY.round()} m',
-      Offset(6, padT),
-      size: 9,
-    );
-    label(
-      '${minY.round()} m',
-      Offset(6, padT + h - 10),
-      size: 9,
-    );
+    label('${maxY.round()} m', Offset(6, padT), size: 9);
+    label('${minY.round()} m', Offset(6, padT + h - 10), size: 9);
 
-    canvas.drawCircle(Offset(xAt(0), yAt(samples.first.losM)), 4, Paint()..color = meshTeal);
+    canvas.drawCircle(
+      Offset(xAt(0), yAt(samples.first.losM)),
+      4,
+      Paint()..color = meshTeal,
+    );
     canvas.drawCircle(
       Offset(xAt(samples.length - 1), yAt(samples.last.losM)),
       4,

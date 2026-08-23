@@ -16,7 +16,9 @@ class BleScanHit {
 }
 
 class BleScanner {
-  Stream<List<BleScanHit>> scan({Duration timeout = const Duration(seconds: 8)}) async* {
+  Stream<List<BleScanHit>> scan({
+    Duration timeout = const Duration(seconds: 8),
+  }) async* {
     await _ensurePermissions();
     await FlutterBluePlus.startScan(
       timeout: timeout,
@@ -148,7 +150,11 @@ class BleTransport implements CompanionTransport {
   Future<void> write(Uint8List frame) async {
     final rx = _rx;
     if (rx == null) throw StateError('nicht verbunden');
-    await rx.write(frame, withoutResponse: _writeNoResponse, timeout: opTimeoutSec);
+    await rx.write(
+      frame,
+      withoutResponse: _writeNoResponse,
+      timeout: opTimeoutSec,
+    );
   }
 
   @override

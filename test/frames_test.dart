@@ -39,22 +39,31 @@ void main() {
       4,
       1, 2, 3, 4,
     ]);
-    final parsed = parseCompanionFrame(frame, meshPixDataType: kMeshPixDataType);
+    final parsed = parseCompanionFrame(
+      frame,
+      meshPixDataType: kMeshPixDataType,
+    );
     expect(parsed?.incoming?.kind.toString(), contains('unknown'));
   });
 
   test('meshpix channel datagram is recognized', () {
     final frame = Uint8List.fromList([
       Resp.channelDataRecv,
-      8, 0, 0,
+      8,
+      0,
+      0,
       0,
       0xFF,
       kMeshPixDataType & 0xFF,
       (kMeshPixDataType >> 8) & 0xFF,
       2,
-      0x4D, 0x50,
+      0x4D,
+      0x50,
     ]);
-    final parsed = parseCompanionFrame(frame, meshPixDataType: kMeshPixDataType);
+    final parsed = parseCompanionFrame(
+      frame,
+      meshPixDataType: kMeshPixDataType,
+    );
     expect(parsed?.incoming?.kind.toString(), contains('meshPix'));
   });
 

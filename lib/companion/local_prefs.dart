@@ -39,17 +39,13 @@ class LocalPrefs {
   }
 
   static Set<String> _readSet(SharedPreferences p, String key) =>
-      (p.getString(key) ?? '')
-          .split(',')
-          .where((s) => s.isNotEmpty)
-          .toSet();
+      (p.getString(key) ?? '').split(',').where((s) => s.isNotEmpty).toSet();
 
   static Future<void> _writeSet(
     SharedPreferences p,
     String key,
     Set<String> values,
-  ) =>
-      p.setString(key, values.join(','));
+  ) => p.setString(key, values.join(','));
 
   static Future<Set<String>> readBlockedContacts() async {
     final p = await SharedPreferences.getInstance();

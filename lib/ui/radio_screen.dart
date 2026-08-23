@@ -131,7 +131,9 @@ class _RadioPaneState extends State<RadioPane> {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<RadioPreset>(
-          decoration: const InputDecoration(labelText: 'Preset (wie MeshCore One)'),
+          decoration: const InputDecoration(
+            labelText: 'Preset (wie MeshCore One)',
+          ),
           items: [
             for (final p in RadioPreset.all)
               DropdownMenuItem(value: p, child: Text(p.label)),
@@ -149,25 +151,56 @@ class _RadioPaneState extends State<RadioPane> {
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(child: TextField(controller: _freq, decoration: const InputDecoration(labelText: 'MHz'), keyboardType: TextInputType.number)),
+            Expanded(
+              child: TextField(
+                controller: _freq,
+                decoration: const InputDecoration(labelText: 'MHz'),
+                keyboardType: TextInputType.number,
+              ),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _bw, decoration: const InputDecoration(labelText: 'BW kHz'), keyboardType: TextInputType.number)),
+            Expanded(
+              child: TextField(
+                controller: _bw,
+                decoration: const InputDecoration(labelText: 'BW kHz'),
+                keyboardType: TextInputType.number,
+              ),
+            ),
           ],
         ),
         Row(
           children: [
-            Expanded(child: TextField(controller: _sf, decoration: const InputDecoration(labelText: 'SF'), keyboardType: TextInputType.number)),
+            Expanded(
+              child: TextField(
+                controller: _sf,
+                decoration: const InputDecoration(labelText: 'SF'),
+                keyboardType: TextInputType.number,
+              ),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _cr, decoration: const InputDecoration(labelText: 'CR'), keyboardType: TextInputType.number)),
+            Expanded(
+              child: TextField(
+                controller: _cr,
+                decoration: const InputDecoration(labelText: 'CR'),
+                keyboardType: TextInputType.number,
+              ),
+            ),
             const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _pwr, decoration: const InputDecoration(labelText: 'dBm'), keyboardType: TextInputType.number)),
+            Expanded(
+              child: TextField(
+                controller: _pwr,
+                decoration: const InputDecoration(labelText: 'dBm'),
+                keyboardType: TextInputType.number,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 12),
         FilledButton(
           onPressed: () {
             final settings = RadioSettings(
-              freqMhz: double.tryParse(_freq.text.replaceAll(',', '.')) ?? 869.525,
+              freqMhz:
+                  double.tryParse(_freq.text.replaceAll(',', '.')) ?? 869.525,
               bwKhz: double.tryParse(_bw.text.replaceAll(',', '.')) ?? 250,
               spreadingFactor: int.tryParse(_sf.text) ?? 11,
               codingRate: int.tryParse(_cr.text) ?? 5,

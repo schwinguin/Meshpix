@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
@@ -24,7 +23,6 @@ import '../models/uri_card.dart';
 import '../transfer/catchup.dart';
 import '../transfer/engine.dart';
 import '../transfer/protocol.dart';
-
 
 class NodeSession {
   NodeSession({
@@ -265,7 +263,10 @@ class AppController extends ChangeNotifier {
     await _connectToDevice(hit.device, name: hit.name);
   }
 
-  Future<bool> _connectToDevice(BluetoothDevice device, {String name = ''}) async {
+  Future<bool> _connectToDevice(
+    BluetoothDevice device, {
+    String name = '',
+  }) async {
     if (_connecting) return false;
     _connecting = true;
     _userDisconnected = false;
@@ -306,8 +307,9 @@ class AppController extends ChangeNotifier {
         ),
       );
       newSession.sub = engine.events.listen((e) => _onEvent(newSession, e));
-      newSession.noticeSub =
-          _bleClient!.notices.listen((n) => _onNotice(newSession, n));
+      newSession.noticeSub = _bleClient!.notices.listen(
+        (n) => _onNotice(newSession, n),
+      );
       session = newSession;
       _open = newSession.conversations.first;
       // Geräte-Erinnerung + Link-Loss-Beobachtung (Auto-Reconnect).
@@ -425,7 +427,8 @@ class AppController extends ChangeNotifier {
       return;
     }
     final attempt = ++_reconnectAttempts;
-    status = 'Verbindung verloren — verbinde erneut '
+    status =
+        'Verbindung verloren — verbinde erneut '
         '($attempt/$_maxReconnectAttempts) …';
     notifyListeners();
     Timer(Duration(seconds: 2 * attempt), () => unawaited(_autoConnectLast()));
@@ -638,13 +641,13 @@ class AppController extends ChangeNotifier {
       return;
     }
     final session = active;
-    if (!session.conversations.any((c) => c.isChannel && c.channelIdx == free)) {
+    if (!session.conversations.any(
+      (c) => c.isChannel && c.channelIdx == free,
+    )) {
       var i = 0;
-      while (
-        i < session.conversations.length &&
-        session.conversations[i].isChannel &&
-        (session.conversations[i].channelIdx ?? 0) < free
-      ) {
+      while (i < session.conversations.length &&
+          session.conversations[i].isChannel &&
+          (session.conversations[i].channelIdx ?? 0) < free) {
         i++;
       }
       session.conversations.insert(
@@ -705,7 +708,9 @@ class AppController extends ChangeNotifier {
     if (title != null) mutedChannels.remove(title);
     active.conversations.removeWhere((c) => c.isChannel && c.channelIdx == idx);
     error = null;
-    status = title == null || title.isEmpty ? 'Kanal $idx gelöscht' : 'Kanal „$title" gelöscht';
+    status = title == null || title.isEmpty
+        ? 'Kanal $idx gelöscht'
+        : 'Kanal „$title" gelöscht';
     notifyListeners();
   }
 
@@ -791,7 +796,11 @@ class AppController extends ChangeNotifier {
       } else {
         final tag = _nextTraceTag();
         _tracePingByTag[tag] = key;
-        await companion?.tracePath(contact, tag: tag, flags: _traceFlags(contact));
+        await companion?.tracePath(
+          contact,
+          tag: tag,
+          flags: _traceFlags(contact),
+        );
       }
     } catch (e) {
       _pingTimers[key]?.cancel();
@@ -802,8 +811,11 @@ class AppController extends ChangeNotifier {
   }
 
   /// Trace-Flags: untere 2 Bits = log2(Path-Eintrag-Weite).
-  static int _traceFlags(MeshContact c) =>
-      c.outPathEntrySize == 2 ? 1 : c.outPathEntrySize == 4 ? 2 : 0;
+  static int _traceFlags(MeshContact c) => c.outPathEntrySize == 2
+      ? 1
+      : c.outPathEntrySize == 4
+      ? 2
+      : 0;
 
   int _nextTraceTag() {
     _traceTagSeq = (_traceTagSeq + 1 + _rng.nextInt(0xFFFF)) & 0x7fffffff;
@@ -898,8 +910,7 @@ class AppController extends ChangeNotifier {
     return lastLos!;
   }
 
-  NoiseSample? get lastNoise =>
-      noiseSamples.isEmpty ? null : noiseSamples.last;
+  NoiseSample? get lastNoise => noiseSamples.isEmpty ? null : noiseSamples.last;
 
   int? get localNoiseFloor => lastNoise?.dbm;
 
@@ -1008,14 +1019,18 @@ class AppController extends ChangeNotifier {
   String exportSelfUri() {
     final me = self;
     if (me == null) return '';
-    return MeshCoreUri.contact(name: me.name, publicKey: me.publicKey, type: me.type);
+    return MeshCoreUri.contact(
+      name: me.name,
+      publicKey: me.publicKey,
+      type: me.type,
+    );
   }
 
   String exportContactUri(MeshContact contact) => MeshCoreUri.contact(
-        name: contact.name,
-        publicKey: contact.publicKey,
-        type: contact.type,
-      );
+    name: contact.name,
+    publicKey: contact.publicKey,
+    type: contact.type,
+  );
 
   Future<String?> importContactUri(String raw) async {
     final parsed = MeshCoreUri.parseContact(raw);
@@ -1061,7 +1076,10 @@ class AppController extends ChangeNotifier {
             ..busy = false
             ..lastError = null
             ..transcript.add(
-              CliLine(kind: CliLineKind.info, text: 'Login OK · ${login.roleLabel}'),
+              CliLine(
+                kind: CliLineKind.info,
+                text: 'Login OK · ${login.roleLabel}',
+              ),
             );
         }
         status = 'Repeater-Login OK';
@@ -1092,7 +1110,8 @@ class AppController extends ChangeNotifier {
                 ..addAll(parsed);
             }
           }
-          if (cli.lastCommand == 'logout' || text.toLowerCase().contains('logout')) {
+          if (cli.lastCommand == 'logout' ||
+              text.toLowerCase().contains('logout')) {
             cli.loggedIn = false;
             cli.isAdmin = false;
           }
@@ -1115,7 +1134,9 @@ class AppController extends ChangeNotifier {
     for (final conv in session.conversations) {
       for (var i = 0; i < conv.messages.length; i++) {
         final m = conv.messages[i];
-        if (m.outgoing && m.ackCode == ack && m.delivery != DeliveryStatus.delivered) {
+        if (m.outgoing &&
+            m.ackCode == ack &&
+            m.delivery != DeliveryStatus.delivered) {
           conv.messages[i] = m.copyWith(
             delivery: DeliveryStatus.delivered,
             rttMs: rtt,
@@ -1159,19 +1180,19 @@ class AppController extends ChangeNotifier {
     for (final c in session.companion?.contacts ?? const <MeshContact>[]) {
       if (!_keyEq(c.publicKey, prefix)) continue;
       if (!c.isChat) return null;
-      session.conversations.add(Conversation(
-        id: 'convo-${c.keyHex}',
-        title: c.name.isEmpty ? c.shortKey : c.name,
-        isChannel: false,
-        peerKey: Uint8List.fromList(c.publicKey),
-        peerType: c.type,
-        favourite: c.isFavourite,
-      ));
+      session.conversations.add(
+        Conversation(
+          id: 'convo-${c.keyHex}',
+          title: c.name.isEmpty ? c.shortKey : c.name,
+          isChannel: false,
+          peerKey: Uint8List.fromList(c.publicKey),
+          peerType: c.type,
+          favourite: c.isFavourite,
+        ),
+      );
       return session.conversations.last;
     }
-    final hex = prefix
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
+    final hex = prefix.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final conv = Conversation(
       id: 'prefix-$hex',
       title: hex,
@@ -1218,7 +1239,9 @@ class AppController extends ChangeNotifier {
       );
     } else {
       final pre = e.senderPrefix;
-      conv = _findConvoByPrefix(session, pre) ?? _ensureConvoForPrefix(session, pre);
+      conv =
+          _findConvoByPrefix(session, pre) ??
+          _ensureConvoForPrefix(session, pre);
     }
     if (conv == null) return;
     // Lokale Filter: blockierte Absender werden verworfen, gedämpfte
@@ -1226,7 +1249,8 @@ class AppController extends ChangeNotifier {
     final sender = _contactForPrefix(session, e.senderPrefix);
     final sKey = sender?.keyHex;
     if (sKey != null && blockedContacts.contains(sKey)) return;
-    final muted = (conv.isChannel && mutedChannels.contains(conv.title)) ||
+    final muted =
+        (conv.isChannel && mutedChannels.contains(conv.title)) ||
         (sKey != null && mutedContacts.contains(sKey));
     if (e.chunkTotal != null && e.chunkReceived != null) {
       final idx = conv.messages.indexWhere((m) => m.transferId == e.transferId);
@@ -1270,8 +1294,10 @@ class AppController extends ChangeNotifier {
           kind: ChatKind.text,
           outgoing: false,
           timestamp: e.timestamp != null
-              ? DateTime.fromMillisecondsSinceEpoch(e.timestamp! * 1000, isUtc: true)
-                  .toLocal()
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  e.timestamp! * 1000,
+                  isUtc: true,
+                ).toLocal()
               : DateTime.now(),
           text: e.message,
           hopCount: e.hopCount,
@@ -1377,7 +1403,8 @@ class AppController extends ChangeNotifier {
     }
     if (key == null) return;
     final started = _pingStarted[key];
-    final rtt = n.rttMs ??
+    final rtt =
+        n.rttMs ??
         (started == null
             ? null
             : DateTime.now().difference(started).inMilliseconds);
@@ -1409,8 +1436,9 @@ class AppController extends ChangeNotifier {
     final key = _tracePingByTag.remove(t.tag);
     if (key == null) return;
     final started = _pingStarted[key];
-    final rttMs =
-        started == null ? null : DateTime.now().difference(started).inMilliseconds;
+    final rttMs = started == null
+        ? null
+        : DateTime.now().difference(started).inMilliseconds;
     final prev = pings[key];
     if (prev == null) return;
     pings[key] = prev.copyWith(
@@ -1441,19 +1469,24 @@ class AppController extends ChangeNotifier {
 
   void _ingestCatchUpText(NodeSession session, TransferEvent e) {
     final pkt = e.catchUp!;
-    final conv = session.conversations
+    final conv =
+        session.conversations
             .where((c) => c.isChannel && c.channelIdx == pkt.channelIdx)
             .firstOrNull ??
         session.conversations.where((c) => c.isChannel).firstOrNull;
     if (conv == null) return;
     // Lokale Filter (gleiche Regel wie Live-Eingang).
-    final sender =
-        _contactForPrefix(session, e.senderPrefix ?? pkt.senderPrefix);
+    final sender = _contactForPrefix(
+      session,
+      e.senderPrefix ?? pkt.senderPrefix,
+    );
     final sKey = sender?.keyHex;
     if (sKey != null && blockedContacts.contains(sKey)) return;
-    final muted = (conv.isChannel && mutedChannels.contains(conv.title)) ||
+    final muted =
+        (conv.isChannel && mutedChannels.contains(conv.title)) ||
         (sKey != null && mutedContacts.contains(sKey));
-    final senderName = _nameForPrefix(session, e.senderPrefix) ??
+    final senderName =
+        _nameForPrefix(session, e.senderPrefix) ??
         _nameForPrefix(session, pkt.senderPrefix);
     final dup = conv.messages.any((m) {
       if (m.catchUpId != null && m.catchUpId == pkt.msgId) return true;
@@ -1461,8 +1494,8 @@ class AppController extends ChangeNotifier {
           pkt.text!.isNotEmpty &&
           m.text == pkt.text &&
           !m.outgoing) {
-        final dt =
-            (m.timestamp.millisecondsSinceEpoch ~/ 1000 - pkt.timestamp).abs();
+        final dt = (m.timestamp.millisecondsSinceEpoch ~/ 1000 - pkt.timestamp)
+            .abs();
         if (dt <= 300) return true;
       }
       return false;
@@ -1572,8 +1605,10 @@ class AppController extends ChangeNotifier {
         );
         try {
           await session.engine.sendCatchUp(destination: dest, packet: pkt);
-          conv.messages[i] =
-              m.withPeerAck(peer.keyHex, ChannelPeerState.replayed);
+          conv.messages[i] = m.withPeerAck(
+            peer.keyHex,
+            ChannelPeerState.replayed,
+          );
           sent++;
         } catch (_) {}
       }
