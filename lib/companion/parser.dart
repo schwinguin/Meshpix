@@ -431,8 +431,9 @@ IncomingPacket _parseRawData(Uint8List d, {required int meshPixDataType}) {
 }
 
 RepeaterStatus _parseRepeaterStatusFrame(Uint8List d) {
-  if (d.length < 8)
+  if (d.length < 8) {
     return const RepeaterStatus(rawSummary: 'Antwort empfangen');
+  }
   return parseRepeaterStatus(d.sublist(8));
 }
 
