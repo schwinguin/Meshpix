@@ -59,6 +59,7 @@ class _IncomingUpgrade {
   final List<Uint8List?> parts;
   final int total;
   final RadioDestination from;
+  Timer? nackTimer;
   bool get complete => parts.isNotEmpty && parts.every((p) => p != null);
 }
 
@@ -69,6 +70,7 @@ class TransferEngine {
     required this.codec,
     required this.budget,
     this.maxPayload = kMaxDatagramPayload,
+    this.nackTimeout = const Duration(seconds: 10),
   }) {
     _sub = radio.incoming.listen(_onIncoming);
   }
@@ -77,6 +79,12 @@ class TransferEngine {
   final Mp1Codec codec;
   final AirtimeBudget budget;
   final int maxPayload;
+
+  /// Nach dieser Zeit ohne neues Chunk wird ein NACK mit der fehlenden
+  /// Maske gesendet, damit der Sender die Lücke nachschickt — statt ewig
+  /// auf ein verlorenes Paket zu warten. `Duration.zero` schaltet den
+  /// Timer ab (Tests, die nackMissing() manuell aufrufen).
+  final Duration nackTimeout;
 
   final _events = StreamController<TransferEvent>.broadcast();
   Stream<TransferEvent> get events => _events.stream;
@@ -325,10 +333,9 @@ class TransferEngine {
     switch (parsed) {
       case PreviewPacket p:
         if (p.image.upgradeChunks > 0 && !packet.fromChannel) {
-          _upgrades[p.transferId] = _IncomingUpgrade(
-            p.image.upgradeChunks,
-            from,
-          );
+          final up = _IncomingUpgrade(p.image.upgradeChunks, from);
+          _upgrades[p.transferId] = up;
+          _armNackTimer(up, p.transferId);
         }
         _events.add(
           TransferEvent(
@@ -363,6 +370,7 @@ class TransferEngine {
         final fresh = up.parts[p.seq] == null;
         up.parts[p.seq] = p.slice;
         if (fresh) {
+          _armNackTimer(up, p.transferId);
           final received = up.parts.where((part) => part != null).length;
           _events.add(
             TransferEvent(
@@ -377,6 +385,8 @@ class TransferEngine {
           );
         }
         if (up.complete) {
+          up.nackTimer?.cancel();
+          up.nackTimer = null;
           try {
             final blob = codec.reassembleChunks(up.parts);
             final image = codec.decodeUpgradeBlob(blob);
@@ -413,11 +423,25 @@ class TransferEngine {
         }
       case AbortPacket p:
         _offers.remove(p.transferId);
-        _upgrades.remove(p.transferId);
+        final abortedUp = _upgrades.remove(p.transferId);
+        abortedUp?.nackTimer?.cancel();
         _events.add(TransferEvent('Transfer ${p.transferId} abgebrochen'));
       case Mp1Packet():
         break;
     }
+  }
+
+  /// (Re)Armiert den NACK-Timer für einen laufenden Empfang: nach
+  /// [nackTimeout] ohne weiteres Chunk wird ein NACK für die fehlenden
+  /// Sequenzen gesendet.
+  void _armNackTimer(_IncomingUpgrade up, int transferId) {
+    up.nackTimer?.cancel();
+    if (nackTimeout <= Duration.zero) return;
+    up.nackTimer = Timer(nackTimeout, () {
+      final current = _upgrades[transferId];
+      if (current == null || current.complete) return;
+      _nack(transferId, current);
+    });
   }
 
   void nackMissing(int transferId) {
@@ -440,6 +464,10 @@ class TransferEngine {
 
   Future<void> dispose() async {
     await _sub?.cancel();
+    for (final up in _upgrades.values) {
+      up.nackTimer?.cancel();
+    }
+    _upgrades.clear();
     await _events.close();
   }
 }

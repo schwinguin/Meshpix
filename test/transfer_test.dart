@@ -169,6 +169,110 @@ void main() {
     await bobRadio.dispose();
   });
 
+  test('missing chunk triggers automatic NACK after timeout', () async {
+    final aliceRadio = FakeRadio();
+    final bobRadio = FakeRadio();
+    final codec = Mp1Codec();
+    final alice = TransferEngine(
+      radio: aliceRadio,
+      codec: codec,
+      budget: AirtimeBudget(airtimeFactor: 0),
+    );
+    // Kürzerer Timeout als im Production-Default (10 s).
+    final bob = TransferEngine(
+      radio: bobRadio,
+      codec: codec,
+      budget: AirtimeBudget(airtimeFactor: 0),
+      nackTimeout: const Duration(milliseconds: 50),
+    );
+
+    final encoded = codec.encode(
+      makeTestCard(80),
+      options: const EncodeOptions(includeUpgrade: true, transferId: 42),
+    );
+    final chunkCount = encoded.chunks.length;
+    expect(chunkCount, greaterThan(1));
+
+    // Preview + alle Chunks außer seq 0 an Bob liefern.
+    await alice.sendImage(
+      encoded: encoded,
+      destination: RadioDestination.dm(Uint8List.fromList([1, 2, 3, 4, 5, 6])),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    for (final payload in List<Uint8List>.from(aliceRadio.sentDatagrams)) {
+      final parsed = codec.parse(payload);
+      if (parsed is ChunkPacket && parsed.seq == 0) continue;
+      bobRadio.inject(
+        meshPix(payload, from: Uint8List.fromList([1, 2, 3, 4, 5, 6])),
+      );
+    }
+    aliceRadio.sentDatagrams.clear();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    // Bob wartet — ohne Timer würde er hier ewig hängen.
+    expect(bobRadio.sentDatagrams, isEmpty, reason: 'noch kein NACK erwartet');
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+
+    // Der Timeout-NACK ist bei Alice angekommen; sie schickt seq 0 nach.
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    for (final p in List<Uint8List>.from(bobRadio.sentDatagrams)) {
+      aliceRadio.inject(
+        meshPix(p, from: Uint8List.fromList([9, 9, 9, 9, 9, 9])),
+      );
+    }
+    bobRadio.sentDatagrams.clear();
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    var resent = 0;
+    for (final p in List<Uint8List>.from(aliceRadio.sentDatagrams)) {
+      final parsed = codec.parse(p);
+      if (parsed is ChunkPacket && parsed.seq == 0) {
+        bobRadio.inject(
+          meshPix(p, from: Uint8List.fromList([9, 9, 9, 9, 9, 9])),
+        );
+        resent++;
+      }
+    }
+    aliceRadio.sentDatagrams.clear();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(resent, 1, reason: 'Alice schickt genau das fehlende seq 0');
+
+    // Fertig: Bob hat das vollständige Bild, Upgrade-State ist geräumt.
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await alice.dispose();
+    await bob.dispose();
+    await aliceRadio.dispose();
+    await bobRadio.dispose();
+  });
+
+  test('upgrade that completes before timeout sends no extra NACK', () async {
+    final radio = FakeRadio();
+    final codec = Mp1Codec();
+    final engine = TransferEngine(
+      radio: radio,
+      codec: codec,
+      budget: AirtimeBudget(airtimeFactor: 0),
+      nackTimeout: const Duration(milliseconds: 50),
+    );
+
+    // Preview + alle Chunks in einem Rutsch — fertig vor dem Timeout.
+    final encoded = codec.encode(
+      makeTestCard(80),
+      options: const EncodeOptions(includeUpgrade: true, transferId: 5),
+    );
+    expect(encoded.chunks.length, greaterThan(0));
+    radio.inject(meshPix(encoded.preview.bytes));
+    for (final chunk in encoded.chunks) {
+      radio.inject(meshPix(chunk.bytes));
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    // Alles vollständig, jetzt läuft der Timer ab — darf nichts senden.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    expect(radio.sentDatagrams, isEmpty, reason: 'kein NACK nötig');
+    await engine.dispose();
+    await radio.dispose();
+  });
+
   test('unknown data_type is ignored', () async {
     final radio = FakeRadio();
     final engine = TransferEngine(

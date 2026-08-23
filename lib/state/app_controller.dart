@@ -322,6 +322,7 @@ class AppController extends ChangeNotifier {
       unawaited(LocalPrefs.saveDevice(remoteId, resolved));
       status = 'Verbunden mit $resolved';
       notifyListeners();
+      unawaited(_processPendingContactUri());
       ok = true;
     } catch (e) {
       unawaited(_bleTransport?.close().catchError((_) {}));
@@ -446,6 +447,7 @@ class AppController extends ChangeNotifier {
     }
     _open = s.conversations.isNotEmpty ? s.conversations.first : null;
     notifyListeners();
+    unawaited(_processPendingContactUri());
   }
 
   RadioDestination destFor(Conversation c) {
@@ -1031,6 +1033,27 @@ class AppController extends ChangeNotifier {
     publicKey: contact.publicKey,
     type: contact.type,
   );
+
+  /// `meshcore://contact/add/…`-Deep-Links (QR-Scan oder geteilte Karten).
+  /// Links, die vor der Geräteverbindung eintreffen, werden gepuffert und
+  /// importiert, sobald eine Session aktiv ist.
+  String? _pendingContactUri;
+
+  Future<void> handleContactUri(String uri) async {
+    _pendingContactUri = uri;
+    if (session == null) {
+      status = 'meshcore://-Kontakt erhalten — warte auf Verbindung …';
+      notifyListeners();
+    }
+    await _processPendingContactUri();
+  }
+
+  Future<void> _processPendingContactUri() async {
+    final uri = _pendingContactUri;
+    if (uri == null || session == null || companion == null) return;
+    _pendingContactUri = null;
+    await importContactUri(uri);
+  }
 
   Future<String?> importContactUri(String raw) async {
     final parsed = MeshCoreUri.parseContact(raw);

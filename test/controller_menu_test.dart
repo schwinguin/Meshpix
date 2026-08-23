@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meshpix/models/chat.dart';
 import 'package:meshpix/models/channel.dart';
 import 'package:meshpix/models/contact.dart';
+import 'package:meshpix/models/uri_card.dart';
 import 'package:meshpix/state/app_controller.dart';
 import 'package:meshpix/transfer/protocol.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -188,4 +189,50 @@ void main() {
     expect(dm.first.title, 'deadbeef0001');
     expect(dm.first.messages.first.text, 'Wen bin ich?');
   });
+
+  test('meshcore:// deep link imports contact when connected', () async {
+    final fake = FakeCompanion(
+      channels: [MeshChannel(index: 0, name: 'Public')],
+    );
+    final app = AppController();
+    addTearDown(app.dispose);
+    app.attachSession(testSession(fake));
+
+    final key = List<int>.generate(32, (i) => (0x40 + i * 3) & 0xFF);
+    final uri = MeshCoreUri.contact(name: 'Tiefenlink', publicKey: key);
+    await app.handleContactUri(uri);
+
+    final dm = app.session!.conversations
+        .where((c) => !c.isChannel && c.title == 'Tiefenlink')
+        .toList();
+    expect(dm, hasLength(1));
+    expect(app.status, 'Tiefenlink importiert');
+  });
+
+  test(
+    'deep link before connection is buffered and applied on connect',
+    () async {
+      final app = AppController();
+      addTearDown(app.dispose);
+      // Noch keine Session (BLE nicht verbunden).
+      final key = List<int>.generate(32, (i) => (0x70 + i) & 0xFF);
+      final uri = MeshCoreUri.contact(name: 'Wartend', publicKey: key);
+      await app.handleContactUri(uri);
+      // Wird gepuffert, nicht importiert.
+      expect(app.session, isNull);
+
+      // Jetzt verbunden — Puffer muss freigegeben werden.
+      final fake = FakeCompanion(
+        channels: [MeshChannel(index: 0, name: 'Public')],
+      );
+      app.attachSession(testSession(fake));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      final dm = app.session!.conversations
+          .where((c) => !c.isChannel && c.title == 'Wartend')
+          .toList();
+      expect(dm, hasLength(1));
+      expect(app.status, 'Wartend importiert');
+    },
+  );
 }
