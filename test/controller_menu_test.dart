@@ -121,4 +121,52 @@ void main() {
     expect(benConv.messages, hasLength(1));
     expect(benConv.messages.first.text, 'Hallo Ben');
   });
+
+  test('DM from contact without convo creates named conversation', () async {
+    final anna = contact('Anna', 3);
+    final fake = FakeCompanion(
+      contacts: [anna],
+      channels: [MeshChannel(index: 0, name: 'Public')],
+    );
+    final app = AppController();
+    addTearDown(app.dispose);
+    app.attachSession(testSession(fake));
+    fake.emitPacket(IncomingPacket(
+      kind: IncomingKind.text,
+      fromChannel: false,
+      senderPrefix: Uint8List.fromList(anna.publicKey.take(6).toList()),
+      text: 'Hi Anna-DM',
+      timestamp: 100,
+    ));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    final dm = app.session!.conversations.where((c) => !c.isChannel).toList();
+    expect(dm, hasLength(1));
+    expect(dm.first.title, 'Anna');
+    expect(dm.first.messages, hasLength(1));
+    expect(dm.first.messages.first.text, 'Hi Anna-DM');
+    final pub = app.session!.conversations.firstWhere((c) => c.isChannel);
+    expect(pub.messages, isEmpty);
+  });
+
+  test('DM from unknown sender lands in prefix placeholder convo', () async {
+    final fake = FakeCompanion(channels: [MeshChannel(index: 0, name: 'Public')]);
+    final app = AppController();
+    addTearDown(app.dispose);
+    app.attachSession(testSession(fake));
+    final prefix = [0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01];
+    fake.emitPacket(IncomingPacket(
+      kind: IncomingKind.text,
+      fromChannel: false,
+      senderPrefix: Uint8List.fromList(prefix),
+      text: 'Wen bin ich?',
+      timestamp: 101,
+    ));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    final dm = app.session!.conversations.where((c) => !c.isChannel).toList();
+    expect(dm, hasLength(1));
+    expect(dm.first.title, 'deadbeef0001');
+    expect(dm.first.messages.first.text, 'Wen bin ich?');
+  });
 }

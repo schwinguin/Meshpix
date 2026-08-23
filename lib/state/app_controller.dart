@@ -1100,8 +1100,58 @@ class AppController extends ChangeNotifier {
   void _ensureConvo(NodeSession session, MeshContact contact) {
     // Repeater & Co. sind Infrastruktur: kein Chat, nur Knoten-Tab.
     if (!contact.isChat) return;
-    if (_findConvoFor(session, contact.publicKey) != null) return;
+    final existing = _findConvoFor(session, contact.publicKey);
+    if (existing != null) {
+      // Platzhalter eines unbekannten Absenders aufrüsten.
+      if (existing.id.startsWith('prefix-') && contact.name.isNotEmpty) {
+        existing.title = contact.name;
+        existing.peerType = contact.type;
+      }
+      return;
+    }
     session.conversations.add(_convoForContact(session.id, contact));
+  }
+
+  Conversation? _findConvoByPrefix(NodeSession session, Uint8List? prefix) {
+    if (prefix == null || prefix.length < 6) return null;
+    for (final c in session.conversations) {
+      if (c.isChannel || c.peerKey == null) continue;
+      if (_keyEq(c.peerKey!, prefix)) return c;
+    }
+    return null;
+  }
+
+  /// DM-Unterhaltungen erzeugen, falls noch keine existiert: bekannte
+  /// Kontakte mit Namen, unbekannte Absender mit Prefix-Platzhalter.
+  Conversation? _ensureConvoForPrefix(NodeSession session, Uint8List? prefix) {
+    final found = _findConvoByPrefix(session, prefix);
+    if (found != null) return found;
+    if (prefix == null || prefix.length < 6) return null;
+    for (final c in session.companion?.contacts ?? const <MeshContact>[]) {
+      if (!_keyEq(c.publicKey, prefix)) continue;
+      if (!c.isChat) return null;
+      session.conversations.add(Conversation(
+        id: 'convo-${c.keyHex}',
+        title: c.name.isEmpty ? c.shortKey : c.name,
+        isChannel: false,
+        peerKey: Uint8List.fromList(c.publicKey),
+        peerType: c.type,
+        favourite: c.isFavourite,
+      ));
+      return session.conversations.last;
+    }
+    final hex = prefix
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
+    final conv = Conversation(
+      id: 'prefix-$hex',
+      title: hex,
+      isChannel: false,
+      peerKey: Uint8List.fromList(prefix),
+      peerType: AdvType.none,
+    );
+    session.conversations.add(conv);
+    return conv;
   }
 
   Conversation? _findConvoFor(NodeSession session, List<int> key) {
@@ -1138,21 +1188,8 @@ class AppController extends ChangeNotifier {
         orElse: () => session.conversations.first,
       );
     } else {
-      conv = session.conversations.cast<Conversation?>().firstWhere((c) {
-        if (c!.isChannel) return false;
-        final key = c.peerKey;
-        final pre = e.senderPrefix;
-        if (key == null || pre == null) return c.title != session.name;
-        return key.length >= 6 &&
-            key[0] == pre[0] &&
-            key[1] == pre[1] &&
-            key[2] == pre[2] &&
-            key[3] == pre[3] &&
-            key[4] == pre[4] &&
-            key[5] == pre[5];
-      }, orElse: () => session.conversations.length > 1
-          ? session.conversations[1]
-          : session.conversations.first);
+      final pre = e.senderPrefix;
+      conv = _findConvoByPrefix(session, pre) ?? _ensureConvoForPrefix(session, pre);
     }
     if (conv == null) return;
     // Lokale Filter: blockierte Absender werden verworfen, gedämpfte
