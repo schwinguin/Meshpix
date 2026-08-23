@@ -13,11 +13,7 @@ Ein MeshCore-Channel-Datagramm hat **163 Byte** Nutzlast. Ein Handyfoto passt ni
 
 `data_type` für MeshPix-Bilder: `0xFF50`. Channel-Catch-up / Quittungen: `0xFF51`.
 
-## Simulator ohne Funkgerät
-
-Die App startet im **Simulator** mit zwei Identitäten (Anna und Ben). So lassen sich Codec, Chat, Delivery-Status, Advert und Nachzug ohne LoRa-Node testen.
-
-Bluetooth koppelt an einen echten MeshCore-Companion (Nordic UART, Prefix z. B. `MeshCore-`, `HT-`).
+Die App koppelt per Bluetooth an einen echten MeshCore-Companion (Nordic UART, Prefix z. B. `MeshCore-`, `HT-`) und verbindet sich beim Neustart automatisch mit dem zuletzt gekoppelten Gerät. Codec, Chat, Delivery-Status, Advert und Nachzug lassen sich ohne LoRa-Node an einem simulierten Companion testen (siehe `test/fake_companion.dart`).
 
 ## MeshCore-One-Features
 
@@ -87,4 +83,4 @@ Signing, Provisioning und Play/App-Store-Release sind nicht Teil dieses MVP.
 
 ## Limits (bewusst)
 
-Keine Offline-Stadtkarte, kein Firmware-Flash, keine MCOimg-`im3:`-Kompatibilität, kein Wi‑Fi/USB-Companion. Die Sichtlinie ist ein Profil, kein Kartenlayer. Room-Server sind MeshCores eigenes Store-and-Forward; das Channel-Nachreichen ist ein MeshPix-Overlay für Public-Flood. Der Simulator enthält **Relay1** (Passwort `password`, Wendelstein-Position). Off-grid lässt sich dort per `setSimReachable` nachstellen.
+Keine Offline-Stadtkarte, kein Firmware-Flash, keine MCOimg-`im3:`-Compatibilität, kein Wi‑Fi/USB-Companion. Die Sichtlinie ist ein Profil, kein Kartenlayer. Room-Server sind MeshCores eigenes Store-and-Forward; das Channel-Nachreichen ist ein MeshPix-Overlay für Public-Flood.
