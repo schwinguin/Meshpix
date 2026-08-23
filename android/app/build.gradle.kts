@@ -6,8 +6,10 @@ plugins {
 
 android {
     namespace = "cloud.nothof.meshpix"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Explizit gepinnt (entspricht Flutter-Defaults 3.47.1). Ein Flutter-
+    // Default-Bump darf den Build hier nicht still ändern.
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -19,8 +21,10 @@ android {
         applicationId = "cloud.nothof.meshpix"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        // minSdk 24 (Android 7.0): Bluetooth-Le-Gatt-Verhalten +
+        // BLUETOOTH_SCAN/CONNECT-Model. targetSdk 36 = aktuellster Stable Stand.
+        minSdk = 24
+        targetSdk = 36
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
