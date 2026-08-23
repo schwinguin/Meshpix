@@ -43,6 +43,8 @@ class FakeCompanion implements PacketRadio, CompanionControl {
 
   void emit(CompanionNotice n) => _notices.add(n);
 
+  void emitPacket(IncomingPacket p) => _incoming.add(p);
+
   @override
   Future<TxReceipt?> sendText({
     required RadioDestination destination,
