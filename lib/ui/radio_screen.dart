@@ -88,7 +88,18 @@ class _RadioPaneState extends State<RadioPane> {
         ),
         const SizedBox(height: 8),
         FilledButton.tonal(
-          onPressed: () => app.renameSelf(_name.text),
+          onPressed: () async {
+            await app.renameSelf(_name.text);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Name gespeichert: ${app.self?.name ?? _name.text.trim()}',
+                  ),
+                ),
+              );
+            }
+          },
           child: const Text('Name speichern'),
         ),
         const SizedBox(height: 8),
@@ -155,7 +166,9 @@ class _RadioPaneState extends State<RadioPane> {
               child: TextField(
                 controller: _freq,
                 decoration: const InputDecoration(labelText: 'MHz'),
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -197,7 +210,7 @@ class _RadioPaneState extends State<RadioPane> {
         ),
         const SizedBox(height: 12),
         FilledButton(
-          onPressed: () {
+          onPressed: () async {
             final settings = RadioSettings(
               freqMhz:
                   double.tryParse(_freq.text.replaceAll(',', '.')) ?? 869.525,
@@ -206,7 +219,14 @@ class _RadioPaneState extends State<RadioPane> {
               codingRate: int.tryParse(_cr.text) ?? 5,
               txPowerDbm: int.tryParse(_pwr.text) ?? 22,
             );
-            app.applyRadio(settings);
+            await app.applyRadio(settings);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Funk geschrieben: ${settings.summary}'),
+                ),
+              );
+            }
           },
           style: FilledButton.styleFrom(backgroundColor: meshAmber),
           child: const Text('Funkparameter schreiben'),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -20,9 +22,19 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _text = TextEditingController();
+  late final VoidCallback _onTextChange;
+
+  @override
+  void initState() {
+    super.initState();
+    // Senden-Button erst aktivieren, wenn Text da ist.
+    _onTextChange = () => setState(() {});
+    _text.addListener(_onTextChange);
+  }
 
   @override
   void dispose() {
+    _text.removeListener(_onTextChange);
     _text.dispose();
     super.dispose();
   }
@@ -111,6 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton.filledTonal(
                     onPressed: () {
@@ -124,12 +137,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     icon: const Icon(Icons.photo_outlined),
                     tooltip: 'Bild',
                   ),
+                  const SizedBox(width: 4),
                   Expanded(
                     child: TextField(
                       controller: _text,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.send,
                       decoration: const InputDecoration(
                         hintText: 'Nachricht',
-                        border: OutlineInputBorder(),
                         isDense: true,
                       ),
                       onSubmitted: (_) => _send(app),
@@ -137,8 +153,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const SizedBox(width: 8),
                   IconButton.filled(
-                    onPressed: () => _send(app),
+                    onPressed: _text.text.trim().isEmpty
+                        ? null
+                        : () => _send(app),
                     icon: const Icon(Icons.send),
+                    tooltip: 'Senden',
                     style: IconButton.styleFrom(backgroundColor: meshTeal),
                   ),
                 ],
@@ -152,7 +171,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _send(AppController app) {
     final t = _text.text;
+    if (t.trim().isEmpty) return;
     _text.clear();
+    FocusScope.of(context).unfocus();
     app.sendText(t);
   }
 
@@ -220,16 +241,27 @@ class _Bubble extends StatelessWidget {
         : Alignment.centerLeft;
     final bg = message.outgoing
         ? meshTeal.withValues(alpha: 0.35)
-        : const Color(0xFF2A2D36);
+        : meshCardElevated;
+    // Bubble-Breite responsiv: auf großen Displays (Tablet) bis ~78 %,
+    // auf kleinen nie breiter als 280 px.
+    final maxW = math.min(280.0, MediaQuery.of(context).size.width * 0.78);
     return Align(
       alignment: align,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.all(10),
-        constraints: const BoxConstraints(maxWidth: 280),
+        constraints: BoxConstraints(maxWidth: maxW),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(14),
+          border: message.outgoing
+              ? null
+              : const Border(
+                  top: BorderSide(color: Color(0xFF3A3D47)),
+                  bottom: BorderSide(color: Color(0xFF3A3D47)),
+                  left: BorderSide(color: Color(0xFF3A3D47)),
+                  right: BorderSide(width: 0, color: Color(0x00000000)),
+                ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

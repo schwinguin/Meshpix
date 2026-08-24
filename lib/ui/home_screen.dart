@@ -65,22 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          if (app.status != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                app.status!,
-                style: const TextStyle(color: meshPaper),
-              ),
-            ),
-          if (app.error != null)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                app.error!,
-                style: const TextStyle(color: Colors.redAccent),
-              ),
-            ),
+          if (app.status != null || app.error != null)
+            _StatusBanner(status: app.status, error: app.error),
           if (app.scanning) const LinearProgressIndicator(),
           Expanded(
             child: app.session == null
@@ -216,6 +202,44 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// Statuszeile oben: Info (Teal) oder Fehler (Rot) mit Icon —
+/// deutlich besser lesbar als nackter Text.
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({this.status, this.error});
+  final String? status;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final isError = error != null;
+    final text = isError ? error! : status!;
+    final color = isError ? Theme.of(context).colorScheme.error : meshTeal;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isError ? Icons.error_outline : Icons.info_outline,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: TextStyle(color: meshPaper)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ConvoList extends StatelessWidget {
   const _ConvoList({required this.app});
   final AppController app;
@@ -299,8 +323,40 @@ class _ScanList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (app.bleHits.isEmpty) {
-      return const Center(
-        child: Text('Suche MeshCore-Nodes …\nName z. B. MeshCore- oder HT-'),
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.bluetooth_searching,
+              size: 56,
+              color: meshTeal.withValues(alpha: 0.7),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Kein MeshCore-Node gefunden',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Name z. B. „MeshCore-“ oder „HT-“. Gerät einschalten und Bluetooth aktivieren.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: meshPaper),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: app.scanning ? null : app.startScan,
+              icon: app.scanning
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.radar),
+              label: Text(app.scanning ? 'Suche …' : 'Scannen'),
+            ),
+          ],
+        ),
       );
     }
     return ListView(

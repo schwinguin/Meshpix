@@ -96,84 +96,162 @@ class _ComposerScreenState extends State<ComposerScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Bild senden')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         children: [
-          if (_localPreview != null)
-            Center(
-              // Sender sieht sein eigenes Foto in voller Qualität, nicht die
-              // quantisierte Mesh-Preview, die der Empfänger bekommt.
-              child: PixelPreview(image: _localPreview!, size: 196),
+          if (_localPreview != null) ...[
+            // Sender sieht sein eigenes Foto in voller Qualität, nicht die
+            // quantisierte Mesh-Preview, die der Empfänger bekommt.
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Center(
+                      child: PixelPreview(image: _localPreview!, size: 196),
+                    ),
+                    if (_encoded != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        '${_encoded!.stats.summaryDe} · ${_encoded!.stats.previewBytes} Byte',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: meshPaper),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          const SizedBox(height: 12),
-          if (_encoded != null)
-            Text(
-              '${_encoded!.stats.summaryDe} · ${_encoded!.stats.previewBytes} Byte',
-              textAlign: TextAlign.center,
-            ),
+            const SizedBox(height: 14),
+          ],
           if (_error != null)
-            Text(_error!, style: const TextStyle(color: Colors.redAccent)),
-          const SizedBox(height: 16),
-          SwitchListTile(
-            title: const Text('4 Farben (sicher 1 Paket)'),
-            value: _fourColor,
-            onChanged: (v) {
-              setState(() => _fourColor = v);
-              if (_encoded != null) {
-                _encode(_source);
-              }
-            },
-          ),
-          SwitchListTile(
-            title: const Text('Dithering'),
-            value: _dither,
-            onChanged: (v) {
-              setState(() => _dither = v);
-              if (_encoded != null) _encode(_source);
-            },
-          ),
-          SwitchListTile(
-            title: const Text('JPEG-Nachzug (Foto, nur Direct/DM)'),
-            subtitle: Text(
-              channel ? 'Public Channel: nur Preview, kein Flood der Chunks' : 'Empfänger tippt Nachladen. Ziel ~160px JPEG, sonst 96px Pixelart.',
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ),
-            value: _upgrade && !channel,
-            onChanged: channel
-                ? null
-                : (v) {
-                    setState(() => _upgrade = v);
-                    if (_encoded != null) _encode(_source);
-                  },
+          if (_localPreview == null)
+            Center(
+              child: Icon(
+                Icons.image_outlined,
+                size: 56,
+                color: meshTeal.withValues(alpha: 0.5),
+              ),
+            ),
+          const SizedBox(height: 14),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text(
+                      'QUALITÄT',
+                      style: TextStyle(
+                        color: meshAmber,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  SwitchListTile(
+                    title: const Text('4 Farben (sicher 1 Paket)'),
+                    value: _fourColor,
+                    onChanged: (v) {
+                      setState(() => _fourColor = v);
+                      if (_encoded != null) {
+                        _encode(_source);
+                      }
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('Dithering'),
+                    value: _dither,
+                    onChanged: (v) {
+                      setState(() => _dither = v);
+                      if (_encoded != null) _encode(_source);
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('JPEG-Nachzug (Foto, nur Direct/DM)'),
+                    subtitle: Text(
+                      channel
+                          ? 'Public Channel: nur Preview, kein Flood der Chunks'
+                          : 'Empfänger tippt Nachladen. Ziel ~160px JPEG, sonst 96px Pixelart.',
+                    ),
+                    value: _upgrade && !channel,
+                    onChanged: channel
+                        ? null
+                        : (v) {
+                            setState(() => _upgrade = v);
+                            if (_encoded != null) _encode(_source);
+                          },
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              FilledButton.tonal(
+              FilledButton.icon(
                 onPressed: () => _encode(makeTestCard(96)),
-                child: const Text('Testbild'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: meshCardElevated,
+                  foregroundColor: meshPaper,
+                ),
+                icon: const Icon(Icons.grid_on_outlined),
+                label: const Text('Testbild'),
               ),
-              FilledButton.tonal(
+              FilledButton.icon(
                 onPressed: () => _pick(ImageSource.gallery),
-                child: const Text('Galerie'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: meshCardElevated,
+                  foregroundColor: meshPaper,
+                ),
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text('Galerie'),
               ),
-              FilledButton.tonal(
+              FilledButton.icon(
                 onPressed: () => _pick(ImageSource.camera),
-                child: const Text('Kamera'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: meshCardElevated,
+                  foregroundColor: meshPaper,
+                ),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Kamera'),
               ),
             ],
           ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: _encoded == null || _busy
-                ? null
-                : () async {
-                    await app.sendEncoded(_encoded!, source: _source);
-                    if (context.mounted) Navigator.pop(context);
-                  },
-            style: FilledButton.styleFrom(backgroundColor: meshAmber),
-            child: Text(_busy ? 'Kodiere …' : 'Senden'),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _encoded == null || _busy
+                  ? null
+                  : () async {
+                      await app.sendEncoded(_encoded!, source: _source);
+                      if (context.mounted) Navigator.pop(context);
+                    },
+              style: FilledButton.styleFrom(
+                backgroundColor: meshAmber,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                _busy
+                    ? 'Kodiere …'
+                    : _encoded != null
+                    ? 'Senden (${_encoded!.stats.previewBytes} Byte)'
+                    : 'Bild wählen',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
           ),
         ],
       ),

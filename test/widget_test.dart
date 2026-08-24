@@ -6,7 +6,8 @@ void main() {
     await tester.pumpWidget(const MeshPixApp());
     await tester.pumpAndSettle();
     expect(find.text('MeshPix'), findsOneWidget);
-    expect(find.textContaining('Suche MeshCore-Nodes'), findsOneWidget);
+    expect(find.text('Kein MeshCore-Node gefunden'), findsOneWidget);
+    expect(find.text('Scannen'), findsOneWidget);
     expect(find.text('Simulator'), findsNothing);
   });
 }
