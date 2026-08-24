@@ -55,6 +55,9 @@ class AppController extends ChangeNotifier {
   bool scanning = false;
   bool reconnecting = false;
   int homeTab = 0;
+
+  /// Unter-Tab im Pfad (0 Ping, 1 Rauschen, 2 Sichtlinie, 3 Karte).
+  int pathSubTab = 0;
   final repeaterSessions = <String, RepeaterSession>{};
   final pings = <String, PingResult>{};
   final noiseSamples = <NoiseSample>[];
@@ -762,6 +765,12 @@ class AppController extends ChangeNotifier {
   void showPath({MeshContact? focus}) {
     homeTab = 4;
     pathFocusKey = focus?.keyHex;
+    if (focus != null) pathSubTab = 2;
+    notifyListeners();
+  }
+
+  void setPathSubTab(int index) {
+    pathSubTab = index;
     notifyListeners();
   }
 
@@ -890,6 +899,7 @@ class AppController extends ChangeNotifier {
     final to = pointFor(dest, aglM: destAgl);
     losBusy = true;
     pathFocusKey = dest.keyHex;
+    pathSubTab = 2;
     notifyListeners();
     if (from == null || to == null) {
       lastLos = analyzeLos(

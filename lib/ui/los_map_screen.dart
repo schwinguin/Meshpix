@@ -9,17 +9,17 @@ import '../state/app_controller.dart';
 import 'theme.dart';
 import 'widgets/los_chart.dart';
 
-/// LOS-Karte: A und B per Tap auf einer OpenStreetMap-Karte wählen —
-/// wie bei MeshCore One. Die Verbindungslinie färbt sich nach Urteil
-/// (grün/gelb/rot), bekannte Mesh-Knoten werden als Pins eingeblendet.
-class LosMapScreen extends StatefulWidget {
-  const LosMapScreen({super.key});
+/// LOS-Karte (Tab-Pane): A und B per Tap auf einer OpenStreetMap-Karte
+/// wählen — wie bei MeshCore One. Die Verbindungslinie färbt sich nach
+/// Urteil (grün/gelb/rot), bekannte Mesh-Knoten werden als Pins eingeblendet.
+class LosMapPane extends StatefulWidget {
+  const LosMapPane({super.key});
 
   @override
-  State<LosMapScreen> createState() => _LosMapScreenState();
+  State<LosMapPane> createState() => _LosMapPaneState();
 }
 
-class _LosMapScreenState extends State<LosMapScreen> {
+class _LosMapPaneState extends State<LosMapPane> {
   final MapController _controller = MapController();
   bool _showNodes = true;
 
@@ -87,227 +87,242 @@ class _LosMapScreenState extends State<LosMapScreen> {
     final los = app.lastLosMap;
     final lineColor = _verdictColor(los);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sichtlinie · Karte'),
-        actions: [
-          IconButton(
-            tooltip: 'Karte an A/B/Knoten anpassen',
-            onPressed: () => _fit(app),
-            icon: const Icon(Icons.fit_screen_outlined),
+    return Column(
+      children: [
+        // Fit + Zurücksetzen.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 4, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                tooltip: 'Karte an A/B/Knoten anpassen',
+                onPressed: () => _fit(app),
+                icon: const Icon(Icons.fit_screen_outlined),
+              ),
+              IconButton(
+                tooltip: 'Zurücksetzen',
+                onPressed: app.mapPointA == null && app.mapPointB == null
+                    ? null
+                    : app.clearMapPoints,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Zurücksetzen',
-            onPressed: app.mapPointA == null && app.mapPointB == null
-                ? null
-                : app.clearMapPoints,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // A/B-Auswahl + Statuszeile.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-            child: Row(
-              children: [
-                _EndpointChip(
-                  label: 'A',
-                  color: meshAmber,
-                  active: app.mapTapTarget == 0,
-                  has: a != null,
-                  onTap: () => app.setMapTapTarget(0),
-                ),
-                const Text(' → ', style: TextStyle(fontSize: 18)),
-                _EndpointChip(
-                  label: 'B',
-                  color: meshTeal,
-                  active: app.mapTapTarget == 1,
-                  has: b != null,
-                  onTap: () => app.setMapTapTarget(1),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    a == null
-                        ? 'Tippe die Karte: Punkt A setzen'
-                        : b == null
-                        ? 'Tippe die Karte: Punkt B setzen'
-                        : app.losMapBusy
-                        ? 'Rechne Sicht …'
-                        : los != null
-                        ? '${los.fromName} → ${los.toName}'
-                        : 'A und B stehen',
-                    style: const TextStyle(fontSize: 12, color: meshPaper),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Stack(
-              children: [
-                FlutterMap(
-                  mapController: _controller,
-                  options: MapOptions(
-                    initialCenter: _centerOf(context.read<AppController>()),
-                    initialZoom: 12,
-                    onTap: (tapPos, point) {
-                      app.placeTapped(
-                        GeoPoint(lat: point.latitude, lon: point.longitude),
-                      );
-                    },
-                  ),
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              // A/B-Auswahl + Statuszeile.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                child: Row(
                   children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      maxZoom: 19,
+                    _EndpointChip(
+                      label: 'A',
+                      color: meshAmber,
+                      active: app.mapTapTarget == 0,
+                      has: a != null,
+                      onTap: () => app.setMapTapTarget(0),
                     ),
-                    const SimpleAttributionWidget(
-                      source: Text('© OpenStreetMap-Mitwirkende'),
+                    const Text(' → ', style: TextStyle(fontSize: 18)),
+                    _EndpointChip(
+                      label: 'B',
+                      color: meshTeal,
+                      active: app.mapTapTarget == 1,
+                      has: b != null,
+                      onTap: () => app.setMapTapTarget(1),
                     ),
-                    // Knoten des Mesh (inkl. eigener Position).
-                    if (_showNodes)
-                      MarkerLayer(
-                        markers: [
-                          for (final p in _nodePoints(app))
-                            Marker(
-                              point: LatLng(p.lat, p.lon),
-                              width: 26,
-                              height: 26,
-                              child: _NodePin(point: p),
-                            ),
-                        ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        a == null
+                            ? 'Tippe die Karte: Punkt A setzen'
+                            : b == null
+                            ? 'Tippe die Karte: Punkt B setzen'
+                            : app.losMapBusy
+                            ? 'Rechne Sicht …'
+                            : los != null
+                            ? '${los.fromName} → ${los.toName}'
+                            : 'A und B stehen',
+                        style: const TextStyle(fontSize: 12, color: meshPaper),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    // A/B-Pins.
-                    MarkerLayer(
-                      markers: [
-                        if (a != null)
-                          Marker(
-                            point: LatLng(a.lat, a.lon),
-                            width: 36,
-                            height: 36,
-                            alignment: const Alignment(0, 1),
-                            child: _EndpointPin(label: 'A', color: meshAmber),
-                          ),
-                        if (b != null)
-                          Marker(
-                            point: LatLng(b.lat, b.lon),
-                            width: 36,
-                            height: 36,
-                            alignment: const Alignment(0, 1),
-                            child: _EndpointPin(label: 'B', color: meshTeal),
-                          ),
-                      ],
-                    ),
-                    // Verbindungslinie A–B, nach Urteil gefärbt.
-                    if (a != null && b != null)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: [
-                              LatLng(a.lat, a.lon),
-                              LatLng(b.lat, b.lon),
-                            ],
-                            color: lineColor,
-                            strokeWidth: 3.5,
-                            borderStrokeWidth: 6,
-                            borderColor: Colors.white.withValues(alpha: 0.85),
-                          ),
-                        ],
-                      ),
-                    const SimpleAttributionWidget(
-                      source: Text('OpenStreetMap-Mitwirkende'),
                     ),
                   ],
                 ),
-                // Deutlicher Hinweis, was der nächste Tap macht.
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    FlutterMap(
+                      mapController: _controller,
+                      options: MapOptions(
+                        initialCenter: _centerOf(context.read<AppController>()),
+                        initialZoom: 12,
+                        onTap: (tapPos, point) {
+                          app.placeTapped(
+                            GeoPoint(lat: point.latitude, lon: point.longitude),
+                          );
+                        },
                       ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.72),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.touch_app,
-                            size: 15,
-                            color: app.mapTapTarget == 0 ? meshAmber : meshTeal,
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          maxZoom: 19,
+                        ),
+                        const SimpleAttributionWidget(
+                          source: Text('© OpenStreetMap-Mitwirkende'),
+                        ),
+                        // Knoten des Mesh (inkl. eigener Position).
+                        if (_showNodes)
+                          MarkerLayer(
+                            markers: [
+                              for (final p in _nodePoints(app))
+                                Marker(
+                                  point: LatLng(p.lat, p.lon),
+                                  width: 26,
+                                  height: 26,
+                                  child: _NodePin(point: p),
+                                ),
+                            ],
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            app.mapTapTarget == 0
-                                ? 'Nächster Tipp: A'
-                                : 'Nächster Tipp: B',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        // A/B-Pins.
+                        MarkerLayer(
+                          markers: [
+                            if (a != null)
+                              Marker(
+                                point: LatLng(a.lat, a.lon),
+                                width: 36,
+                                height: 36,
+                                alignment: const Alignment(0, 1),
+                                child: _EndpointPin(
+                                  label: 'A',
+                                  color: meshAmber,
+                                ),
+                              ),
+                            if (b != null)
+                              Marker(
+                                point: LatLng(b.lat, b.lon),
+                                width: 36,
+                                height: 36,
+                                alignment: const Alignment(0, 1),
+                                child: _EndpointPin(
+                                  label: 'B',
+                                  color: meshTeal,
+                                ),
+                              ),
+                          ],
+                        ),
+                        // Verbindungslinie A–B, nach Urteil gefärbt.
+                        if (a != null && b != null)
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points: [
+                                  LatLng(a.lat, a.lon),
+                                  LatLng(b.lat, b.lon),
+                                ],
+                                color: lineColor,
+                                strokeWidth: 3.5,
+                                borderStrokeWidth: 6,
+                                borderColor: Colors.white.withValues(
+                                  alpha: 0.85,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                      ],
+                    ),
+                    // Deutlicher Hinweis, was der nächste Tap macht.
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.touch_app,
+                                size: 15,
+                                color: app.mapTapTarget == 0
+                                    ? meshAmber
+                                    : meshTeal,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                app.mapTapTarget == 0
+                                    ? 'Nächster Tipp: A'
+                                    : 'Nächster Tipp: B',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                // Unten rechts: Knoten ein/aus.
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: FilterChip(
-                      label: const Text('Knoten'),
-                      selected: _showNodes,
-                      onSelected: (v) => setState(() => _showNodes = v),
+                    // Unten rechts: Knoten ein/aus.
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: FilterChip(
+                          label: const Text('Knoten'),
+                          selected: _showNodes,
+                          onSelected: (v) => setState(() => _showNodes = v),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                // Unten links: eigene Position zentrieren.
-                Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: IconButton.filledTonal(
-                      tooltip: 'Meine Position zentrieren',
-                      onPressed: app.selfPoint() == null
-                          ? null
-                          : () {
-                              final p = app.selfPoint()!;
-                              _controller.move(LatLng(p.lat, p.lon), 15);
-                            },
-                      icon: const Icon(Icons.my_location),
+                    // Unten links: eigene Position zentrieren.
+                    Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: IconButton.filledTonal(
+                          tooltip: 'Meine Position zentrieren',
+                          onPressed: app.selfPoint() == null
+                              ? null
+                              : () {
+                                  final p = app.selfPoint()!;
+                                  _controller.move(LatLng(p.lat, p.lon), 15);
+                                },
+                          icon: const Icon(Icons.my_location),
+                        ),
+                      ),
                     ),
-                  ),
+                    if (app.losMapBusy)
+                      const Align(
+                        alignment: Alignment.center,
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+                  ],
                 ),
-                if (app.losMapBusy)
-                  const Align(
-                    alignment: Alignment.center,
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-              ],
-            ),
+              ),
+              // Urteil + Kompakt-Profil unter der Karte.
+              if (los != null && los.verdict != LosVerdict.noFix)
+                _MapLosPanel(los: los, color: lineColor, app: app),
+            ],
           ),
-          // Urteil + Kompakt-Profil unter der Karte.
-          if (los != null && los.verdict != LosVerdict.noFix)
-            _MapLosPanel(los: los, color: lineColor, app: app),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -472,12 +487,9 @@ class _MapLosPanel extends StatelessWidget {
               ),
               const Spacer(),
               TextButton.icon(
-                onPressed: () {
-                  app.selectTab(4);
-                  Navigator.pop(context);
-                },
+                onPressed: () => app.setPathSubTab(2),
                 icon: const Icon(Icons.insights_outlined, size: 18),
-                label: const Text('Details im Pfad'),
+                label: const Text('Details: Sichtlinie'),
               ),
             ],
           ),

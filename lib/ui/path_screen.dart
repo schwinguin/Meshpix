@@ -11,53 +11,104 @@ import 'theme.dart';
 import 'widgets/los_chart.dart';
 import 'widgets/noise_gauge.dart';
 
-class PathPane extends StatelessWidget {
+class PathPane extends StatefulWidget {
   const PathPane({super.key});
+
+  @override
+  State<PathPane> createState() => _PathPaneState();
+}
+
+class _PathPaneState extends State<PathPane>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(
+    length: 4,
+    vsync: this,
+    initialIndex: context.read<AppController>().pathSubTab.clamp(0, 3),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs.addListener(() {
+      if (_tabs.indexIsChanging) {
+        context.read<AppController>().setPathSubTab(_tabs.index);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
+    final sub = app.pathSubTab.clamp(0, 3);
+    if (_tabs.index != sub && !_tabs.indexIsChanging) {
+      _tabs.animateTo(sub);
+    }
     final items = [...app.contacts]
       ..sort((a, b) {
         if (a.isAdminNode != b.isAdminNode) return a.isAdminNode ? -1 : 1;
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+    return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Pfad',
-                style: Theme.of(context).textTheme.headlineSmall,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Pfad', style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 2),
+              const Text(
+                'Wer antwortet? Wie laut ist der Äther? Ist die Luftlinie frei?',
+                style: TextStyle(color: meshPaper),
               ),
-            ),
-            FilledButton.tonalIcon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const LosMapScreen()),
-              ),
-              icon: const Icon(Icons.map_outlined),
-              label: const Text('Karte'),
-            ),
+            ],
+          ),
+        ),
+        TabBar(
+          controller: _tabs,
+          indicatorColor: meshTeal,
+          labelColor: meshTeal,
+          unselectedLabelColor: meshPaper,
+          indicatorSize: TabBarIndicatorSize.label,
+          tabs: const [
+            Tab(text: 'Ping'),
+            Tab(text: 'Rauschen'),
+            Tab(text: 'Sichtlinie'),
+            Tab(text: 'Karte'),
           ],
         ),
-        const SizedBox(height: 4),
-        const Text(
-          'Drei Fragen, von nah nach weit: Wer antwortet? Wie laut ist der Äther? Ist die Luftlinie frei?',
-          style: TextStyle(color: meshPaper),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: [
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                children: [_PingCard(app: app, items: items)],
+              ),
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                children: [
+                  NoiseGauge(
+                    dbm: app.lastNoise?.dbm ?? app.localNoiseFloor,
+                    source: app.lastNoise?.sourceName,
+                    history: app.noiseSamples.map((s) => s.dbm).toList(),
+                  ),
+                ],
+              ),
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                children: [_LosCard(app: app, items: items)],
+              ),
+              const LosMapPane(),
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
-        _PingCard(app: app, items: items),
-        const SizedBox(height: 14),
-        NoiseGauge(
-          dbm: app.lastNoise?.dbm ?? app.localNoiseFloor,
-          source: app.lastNoise?.sourceName,
-          history: app.noiseSamples.map((s) => s.dbm).toList(),
-        ),
-        const SizedBox(height: 14),
-        _LosCard(app: app, items: items),
       ],
     );
   }
