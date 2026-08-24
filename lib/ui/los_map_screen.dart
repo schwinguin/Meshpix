@@ -5,13 +5,14 @@ import 'package:provider/provider.dart';
 
 import '../geo/geo.dart';
 import '../geo/los.dart';
+import '../models/contact.dart';
+import '../models/signal.dart';
 import '../state/app_controller.dart';
 import 'theme.dart';
 import 'widgets/los_chart.dart';
 
-/// LOS-Karte (Tab-Pane): A und B per Tap auf einer OpenStreetMap-Karte
-/// wählen — wie bei MeshCore One. Die Verbindungslinie färbt sich nach
-/// Urteil (grün/gelb/rot), bekannte Mesh-Knoten werden als Pins eingeblendet.
+/// Sichtlinie (Pfad-Tab): Karte mit Ziel B — Kontakt per Dropdown oder frei per
+/// Tap. A ist immer die eigene Position. Darunter Urteil + Profil + Kennzahlen.
 class LosMapPane extends StatefulWidget {
   const LosMapPane({super.key});
 
@@ -30,25 +31,6 @@ class _LosMapPaneState extends State<LosMapPane> {
     _ => const Color(0xFF6B7280),
   };
 
-  List<GeoPoint> _centerPoints(AppController app) {
-    return <GeoPoint>[
-      if (app.mapPointA != null) app.mapPointA!,
-      if (app.mapPointB != null) app.mapPointB!,
-      ..._nodePoints(app),
-    ];
-  }
-
-  LatLng _centerOf(AppController app) {
-    final pts = _centerPoints(app);
-    if (pts.isEmpty) return const LatLng(49.4, 8.9);
-    double lat = 0, lon = 0;
-    for (final p in pts) {
-      lat += p.lat;
-      lon += p.lon;
-    }
-    return LatLng(lat / pts.length, lon / pts.length);
-  }
-
   List<GeoPoint> _nodePoints(AppController app) {
     final list = <GeoPoint>[for (final c in app.contacts) ?app.pointFor(c)];
     final self = app.selfPoint();
@@ -56,9 +38,10 @@ class _LosMapPaneState extends State<LosMapPane> {
     return list;
   }
 
-  void _fit(AppController app) {
+  List<LatLng> _fitPoints(AppController app) {
     final pts = <LatLng>[
-      if (app.mapPointA != null) LatLng(app.mapPointA!.lat, app.mapPointA!.lon),
+      if (app.selfPoint() != null)
+        LatLng(app.selfPoint()!.lat, app.selfPoint()!.lon),
       if (app.mapPointB != null) LatLng(app.mapPointB!.lat, app.mapPointB!.lon),
     ];
     if (_showNodes) {
@@ -66,9 +49,24 @@ class _LosMapPaneState extends State<LosMapPane> {
         pts.add(LatLng(p.lat, p.lon));
       }
     }
+    return pts;
+  }
+
+  LatLng _centerOf(AppController app) {
+    final pts = _fitPoints(app);
+    if (pts.isEmpty) return const LatLng(49.4, 8.9);
+    double lat = 0, lon = 0;
+    for (final p in pts) {
+      lat += p.latitude;
+      lon += p.longitude;
+    }
+    return LatLng(lat / pts.length, lon / pts.length);
+  }
+
+  void _fit(AppController app) {
+    final pts = _fitPoints(app);
     if (pts.length < 2) {
-      final c = _centerOf(app);
-      _controller.move(c, 12);
+      _controller.move(_centerOf(app), 12);
       return;
     }
     _controller.fitCamera(
@@ -79,312 +77,403 @@ class _LosMapPaneState extends State<LosMapPane> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppController>();
-    final a = app.mapPointA;
-    final b = app.mapPointB;
-    final los = app.lastLosMap;
-    final lineColor = _verdictColor(los);
-
-    return Column(
-      children: [
-        // Fit + Zurücksetzen.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 4, 0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              IconButton(
-                tooltip: 'Karte an A/B/Knoten anpassen',
-                onPressed: () => _fit(app),
-                icon: const Icon(Icons.fit_screen_outlined),
-              ),
-              IconButton(
-                tooltip: 'Zurücksetzen',
-                onPressed: app.mapPointA == null && app.mapPointB == null
-                    ? null
-                    : app.clearMapPoints,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Column(
-            children: [
-              // A/B-Auswahl + Statuszeile.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                child: Row(
-                  children: [
-                    _EndpointChip(
-                      label: 'A',
-                      color: meshAmber,
-                      active: app.mapTapTarget == 0,
-                      has: a != null,
-                      onTap: () => app.setMapTapTarget(0),
-                    ),
-                    const Text(' → ', style: TextStyle(fontSize: 18)),
-                    _EndpointChip(
-                      label: 'B',
-                      color: meshTeal,
-                      active: app.mapTapTarget == 1,
-                      has: b != null,
-                      onTap: () => app.setMapTapTarget(1),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        a == null
-                            ? 'Tippe die Karte: Punkt A setzen'
-                            : b == null
-                            ? 'Tippe die Karte: Punkt B setzen'
-                            : app.losMapBusy
-                            ? 'Rechne Sicht …'
-                            : los != null
-                            ? '${los.fromName} → ${los.toName}'
-                            : 'A und B stehen',
-                        style: const TextStyle(fontSize: 12, color: meshPaper),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Stack(
-                  children: [
-                    FlutterMap(
-                      mapController: _controller,
-                      options: MapOptions(
-                        initialCenter: _centerOf(context.read<AppController>()),
-                        initialZoom: 12,
-                        onTap: (tapPos, point) {
-                          app.placeTapped(
-                            GeoPoint(lat: point.latitude, lon: point.longitude),
-                          );
-                        },
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
-                          maxZoom: 19,
-                          // CARTO-Basemap (OSM-Daten): zuverlaessiges Deep-Zoom,
-                          // kein OSM-Rate-Limit. {s} verteilt auf a/b/c.
-                          tileProvider: NetworkTileProvider(
-                            headers: {
-                              'User-Agent': 'MeshPix/1.0 (https://github.com/schwinguin/Meshpix)',
-                            },
-                          ),
-                        ),
-                        const SimpleAttributionWidget(
-                          source: Text('© OpenStreetMap-Mitwirkende · © CARTO'),
-                        ),
-                        // Knoten des Mesh (inkl. eigener Position).
-                        if (_showNodes)
-                          MarkerLayer(
-                            markers: [
-                              for (final p in _nodePoints(app))
-                                Marker(
-                                  point: LatLng(p.lat, p.lon),
-                                  width: 26,
-                                  height: 26,
-                                  child: _NodePin(point: p),
-                                ),
-                            ],
-                          ),
-                        // A/B-Pins.
-                        MarkerLayer(
-                          markers: [
-                            if (a != null)
-                              Marker(
-                                point: LatLng(a.lat, a.lon),
-                                width: 36,
-                                height: 36,
-                                alignment: const Alignment(0, 1),
-                                child: _EndpointPin(
-                                  label: 'A',
-                                  color: meshAmber,
-                                ),
-                              ),
-                            if (b != null)
-                              Marker(
-                                point: LatLng(b.lat, b.lon),
-                                width: 36,
-                                height: 36,
-                                alignment: const Alignment(0, 1),
-                                child: _EndpointPin(
-                                  label: 'B',
-                                  color: meshTeal,
-                                ),
-                              ),
-                          ],
-                        ),
-                        // Verbindungslinie A–B, nach Urteil gefärbt.
-                        if (a != null && b != null)
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: [
-                                  LatLng(a.lat, a.lon),
-                                  LatLng(b.lat, b.lon),
-                                ],
-                                color: lineColor,
-                                strokeWidth: 3.5,
-                                borderStrokeWidth: 6,
-                                borderColor: Colors.white.withValues(
-                                  alpha: 0.85,
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
-                    // Deutlicher Hinweis, was der nächste Tap macht.
-                    Align(
-                      alignment: Alignment.topCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 7,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.72),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.touch_app,
-                                size: 15,
-                                color: app.mapTapTarget == 0
-                                    ? meshAmber
-                                    : meshTeal,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                app.mapTapTarget == 0
-                                    ? 'Nächster Tipp: A'
-                                    : 'Nächster Tipp: B',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Unten rechts: Knoten ein/aus.
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: FilterChip(
-                          label: const Text('Knoten'),
-                          selected: _showNodes,
-                          onSelected: (v) => setState(() => _showNodes = v),
-                        ),
-                      ),
-                    ),
-                    // Unten links: eigene Position zentrieren.
-                    Align(
-                      alignment: Alignment.bottomLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: IconButton.filledTonal(
-                          tooltip: 'Meine Position zentrieren',
-                          onPressed: app.selfPoint() == null
-                              ? null
-                              : () {
-                                  final p = app.selfPoint()!;
-                                  _controller.move(LatLng(p.lat, p.lon), 15);
-                                },
-                          icon: const Icon(Icons.my_location),
-                        ),
-                      ),
-                    ),
-                    if (app.losMapBusy)
-                      const Align(
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: 44,
-                          height: 44,
-                          child: CircularProgressIndicator(),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              // Urteil + Kompakt-Profil unter der Karte.
-              if (los != null && los.verdict != LosVerdict.noFix)
-                _MapLosPanel(los: los, color: lineColor, app: app),
-            ],
-          ),
-        ),
-      ],
-    );
+  String _matchName(AppController app, GeoPoint p) {
+    for (final c in app.contacts) {
+      final cp = app.pointFor(c);
+      if (cp != null &&
+          (cp.lat - p.lat).abs() < 1e-5 &&
+          (cp.lon - p.lon).abs() < 1e-5) {
+        return c.name;
+      }
+    }
+    return 'Punkt B';
   }
-}
 
-class _EndpointChip extends StatelessWidget {
-  const _EndpointChip({
-    required this.label,
-    required this.color,
-    required this.active,
-    required this.has,
-    required this.onTap,
-  });
-  final String label;
-  final Color color;
-  final bool active;
-  final bool has;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+  Widget _hint(GeoPoint? self, GeoPoint? b) {
+    final text = self == null
+        ? 'Eigene Position fehlt — siehe „Ich"'
+        : b == null
+        ? 'Ziel setzen: Karte tippen'
+        : 'Karte tippen: Ziel verschieben';
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: active ? color.withValues(alpha: 0.25) : meshCardElevated,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: active ? color : Colors.transparent,
-            width: 1.5,
-          ),
+          color: Colors.black.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: has ? color : Colors.transparent,
-                shape: BoxShape.circle,
-                border: Border.all(color: color, width: 1.5),
-              ),
-            ),
+            const Icon(Icons.touch_app, size: 15, color: meshTeal),
             const SizedBox(width: 6),
             Text(
-              label,
-              style: TextStyle(
-                color: active ? color : meshPaper,
-                fontWeight: FontWeight.w700,
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppController>();
+    final self = app.selfPoint();
+    final b = app.mapPointB;
+    final los = app.lastLosMap;
+    final lineColor = _verdictColor(los);
+    final withFix = app.contacts.where((c) => c.hasLocation).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final targetName = b == null ? '—' : _matchName(app, b);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // A = ich (Position + Fix).
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: _SelfFix(),
+        ),
+        // B = Ziel: Kontakt-Dropdown + Fit/Reset.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: _TargetDropdown(app: app, withFix: withFix, current: b),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Karte an Route anpassen',
+                onPressed: () => _fit(app),
+                icon: const Icon(Icons.fit_screen_outlined),
+              ),
+              IconButton(
+                tooltip: 'Zurücksetzen',
+                onPressed: b == null ? null : app.clearMapPoints,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+        ),
+        // Statuszeile + Gelände-Toggle.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Ich → $targetName',
+                  style: const TextStyle(fontSize: 12, color: meshPaper),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              FilterChip(
+                label: const Text('Gelände'),
+                selected: app.useOnlineElevation,
+                onSelected: app.setOnlineElevation,
+              ),
+            ],
+          ),
+        ),
+        // Karte.
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Stack(
+              children: [
+                FlutterMap(
+                  mapController: _controller,
+                  options: MapOptions(
+                    initialCenter: _centerOf(context.read<AppController>()),
+                    initialZoom: 12,
+                    onTap: (tapPos, point) {
+                      app.placeTapped(
+                        GeoPoint(lat: point.latitude, lon: point.longitude),
+                      );
+                    },
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
+                      maxZoom: 19,
+                      // CARTO-Basemap (OSM-Daten): zuverlaessiges Deep-Zoom,
+                      // kein OSM-Rate-Limit. {s} verteilt auf a/b/c.
+                      tileProvider: NetworkTileProvider(
+                        headers: {
+                          'User-Agent': 'MeshPix/1.0 (https://github.com/schwinguin/Meshpix)',
+                        },
+                      ),
+                    ),
+                    const SimpleAttributionWidget(
+                      source: Text('© OpenStreetMap-Mitwirkende · © CARTO'),
+                    ),
+                    // Knoten des Mesh (inkl. eigener Position).
+                    if (_showNodes)
+                      MarkerLayer(
+                        markers: [
+                          for (final p in _nodePoints(app))
+                            Marker(
+                              point: LatLng(p.lat, p.lon),
+                              width: 26,
+                              height: 26,
+                              child: _NodePin(point: p),
+                            ),
+                        ],
+                      ),
+                    // A (ich) + B (Ziel) Pins.
+                    MarkerLayer(
+                      markers: [
+                        if (self != null)
+                          Marker(
+                            point: LatLng(self.lat, self.lon),
+                            width: 36,
+                            height: 36,
+                            alignment: const Alignment(0, 1),
+                            child: const _EndpointPin(
+                              label: 'A',
+                              color: meshAmber,
+                            ),
+                          ),
+                        if (b != null)
+                          Marker(
+                            point: LatLng(b.lat, b.lon),
+                            width: 36,
+                            height: 36,
+                            alignment: const Alignment(0, 1),
+                            child: const _EndpointPin(
+                              label: 'B',
+                              color: meshTeal,
+                            ),
+                          ),
+                      ],
+                    ),
+                    // Verbindungslinie A–B, nach Urteil gefärbt.
+                    if (self != null && b != null)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: [
+                              LatLng(self.lat, self.lon),
+                              LatLng(b.lat, b.lon),
+                            ],
+                            color: lineColor,
+                            strokeWidth: 3.5,
+                            borderStrokeWidth: 6,
+                            borderColor: Colors.white.withValues(alpha: 0.85),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+                // Hinweis oben: was der nächste Tap macht.
+                Align(alignment: Alignment.topCenter, child: _hint(self, b)),
+                // Unten rechts: Knoten ein/aus.
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: FilterChip(
+                      label: const Text('Knoten'),
+                      selected: _showNodes,
+                      onSelected: (v) => setState(() => _showNodes = v),
+                    ),
+                  ),
+                ),
+                // Unten links: eigene Position zentrieren.
+                if (self != null)
+                  Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: IconButton.filledTonal(
+                        tooltip: 'Meine Position zentrieren',
+                        onPressed: () {
+                          _controller.move(LatLng(self.lat, self.lon), 15);
+                        },
+                        icon: const Icon(Icons.my_location),
+                      ),
+                    ),
+                  ),
+                if (app.losMapBusy)
+                  const Align(
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: CircularProgressIndicator(),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        // Urteil + Profil + Kennzahlen.
+        if (los != null && los.verdict != LosVerdict.noFix)
+          _LosDetail(los: los, color: lineColor),
+      ],
+    );
+  }
+}
+
+class _TargetDropdown extends StatelessWidget {
+  const _TargetDropdown({
+    required this.app,
+    required this.withFix,
+    required this.current,
+  });
+  final AppController app;
+  final List<MeshContact> withFix;
+  final GeoPoint? current;
+
+  String? get _selected {
+    if (current == null) return null;
+    for (final c in withFix) {
+      final p = app.pointFor(c);
+      if (p != null &&
+          (p.lat - current!.lat).abs() < 1e-5 &&
+          (p.lon - current!.lon).abs() < 1e-5) {
+        return c.keyHex;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: const InputDecoration(labelText: 'Ziel (B)', isDense: true),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          value: _selected,
+          hint: const Text('frei wählen (Karte tippen)'),
+          items: [
+            for (final c in withFix)
+              DropdownMenuItem(
+                value: c.keyHex,
+                child: Text(
+                  '${c.name} · ${defaultAglLabel(c.type)}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: (key) {
+            if (key == null) return;
+            final c = withFix.firstWhere((x) => x.keyHex == key);
+            app.computeLos(c);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _SelfFix extends StatelessWidget {
+  const _SelfFix();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppController>();
+    final p = app.selfPoint();
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: EdgeInsets.zero,
+      title: Text(
+        p == null
+            ? 'Ich: Position fehlt — antippen und eintragen'
+            : 'Ich: ${p.lat.toStringAsFixed(4)}, ${p.lon.toStringAsFixed(4)} · ${p.elevM.round()} m + ${p.aglM.round()} m Antenne',
+        style: const TextStyle(fontSize: 13),
+      ),
+      children: [
+        const Text(
+          'Kommt aus dem eigenen Advert, oder du tippst sie. Antennenhöhe über Grund — nicht die Meereshöhe.',
+          style: TextStyle(fontSize: 12, color: meshPaper),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue:
+                    (app.selfLatOverride ?? app.self?.lat)?.toString() ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'Breite',
+                  isDense: true,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                onChanged: (v) => app.setSelfFix(
+                  lat: double.tryParse(v.replaceAll(',', '.')),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextFormField(
+                initialValue:
+                    (app.selfLonOverride ?? app.self?.lon)?.toString() ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'Länge',
+                  isDense: true,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                onChanged: (v) => app.setSelfFix(
+                  lon: double.tryParse(v.replaceAll(',', '.')),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                initialValue:
+                    (app.selfAltOverride ?? app.self?.alt)?.toString() ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'Höhe m ü. NN',
+                  isDense: true,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                  signed: true,
+                ),
+                onChanged: (v) => app.setSelfFix(
+                  alt: double.tryParse(v.replaceAll(',', '.')),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Antenne ${app.selfAglM.round()} m',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: app.selfAglM.clamp(1, 30),
+          min: 1,
+          max: 30,
+          divisions: 29,
+          label: '${app.selfAglM.round()} m',
+          onChanged: (v) => app.setSelfFix(aglM: v),
+        ),
+      ],
     );
   }
 }
@@ -457,48 +546,37 @@ class _NodePin extends StatelessWidget {
   }
 }
 
-class _MapLosPanel extends StatelessWidget {
-  const _MapLosPanel({
-    required this.los,
-    required this.color,
-    required this.app,
-  });
+class _LosDetail extends StatelessWidget {
+  const _LosDetail({required this.los, required this.color});
   final LosResult los;
   final Color color;
-  final AppController app;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: meshCard,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.withValues(alpha: 0.6)),
+            ),
+            child: Text(
+              '${los.fromName} → ${los.toName} · ${los.verdictLabel}',
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
               ),
-              const SizedBox(width: 8),
-              Text(
-                los.verdictLabel,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => app.setPathSubTab(2),
-                icon: const Icon(Icons.insights_outlined, size: 18),
-                label: const Text('Details: Sichtlinie'),
-              ),
-            ],
+            ),
           ),
+          const SizedBox(height: 10),
           LosChart(result: los, height: 110),
           const SizedBox(height: 8),
           Wrap(
@@ -513,7 +591,16 @@ class _MapLosPanel extends StatelessWidget {
                 'Fresnel',
                 '${(los.minFresnelClearPct * 100).clamp(0, 999).round()} %',
               ),
+              _stat(
+                'Horizont',
+                formatKm(radioHorizonM(los.from.antennaM, los.to.antennaM)),
+              ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            los.verdictHint,
+            style: const TextStyle(fontSize: 12, color: meshPaper),
           ),
         ],
       ),
@@ -521,12 +608,18 @@ class _MapLosPanel extends StatelessWidget {
   }
 
   Widget _stat(String k, String v) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(k, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-        Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
-      ],
+    return SizedBox(
+      width: 92,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            k,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+          ),
+          Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 }

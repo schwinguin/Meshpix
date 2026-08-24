@@ -57,7 +57,7 @@ class AppController extends ChangeNotifier {
   bool reconnecting = false;
   int homeTab = 0;
 
-  /// Unter-Tab im Pfad (0 Ping, 1 Rauschen, 2 Sichtlinie, 3 Karte).
+  /// Unter-Tab im Pfad (0 Ping, 1 Rauschen, 2 Sichtlinie).
   int pathSubTab = 0;
   final repeaterSessions = <String, RepeaterSession>{};
   final pings = <String, PingResult>{};
@@ -66,8 +66,6 @@ class AppController extends ChangeNotifier {
   final _pingTimers = <String, Timer>{};
   bool pingingAll = false;
   String? pathFocusKey;
-  LosResult? lastLos;
-  bool losBusy = false;
   double? selfLatOverride;
   double? selfLonOverride;
   double? selfAltOverride;
@@ -75,15 +73,8 @@ class AppController extends ChangeNotifier {
   bool useOnlineElevation = false;
   ElevationSource elevationSource = const SyntheticElevation();
 
-  /// Freie A/B-Punkte für die LOS-Karte (lat/lon, ohne GPS-Advert).
-  GeoPoint? mapPointA;
+  /// LOS-Ziel B: Kontakt per Dropdown oder frei per Karten-Tap. A ist immer ich.
   GeoPoint? mapPointB;
-
-  /// 0 = A wird gesetzt, 1 = B (Tap-Ziel auf der Karte).
-  int mapTapTarget = 0;
-
-  /// Kartenfokus: 'mesh' zeigt bekannte Nodes, 'los' zeigt die A/B-Route.
-  String mapMode = 'mesh';
 
   CompanionClient? _bleClient;
   BleTransport? _bleTransport;
@@ -985,100 +976,46 @@ class AppController extends ChangeNotifier {
     return p.isValid ? p : null;
   }
 
-  Future<LosResult> computeLos(MeshContact dest, {double? destAgl}) async {
-    final from = selfPoint();
+  /// Sicht zu einem Kontakt prüfen: setzt B auf den Kontakt, springt in den
+  /// Sichtlinie-Tab und rechnet die Linie (A = ich).
+  void computeLos(MeshContact dest, {double? destAgl}) {
     final to = pointFor(dest, aglM: destAgl);
-    losBusy = true;
+    if (to == null) return;
     pathFocusKey = dest.keyHex;
     pathSubTab = 2;
+    mapPointB = to;
     notifyListeners();
-    if (from == null || to == null) {
-      lastLos = analyzeLos(
-        from: from ?? const GeoPoint(lat: 0, lon: 0),
-        to: to ?? const GeoPoint(lat: 0, lon: 0),
-        fromName: self?.name ?? active.name,
-        toName: dest.name,
-        freqMhz: radioSettings?.freqMhz ?? 869.525,
-      );
-      losBusy = false;
-      notifyListeners();
-      return lastLos!;
-    }
-    List<double> terrain;
-    try {
-      terrain = await elevationSource.along(from, to);
-    } catch (_) {
-      terrain = syntheticTerrain(from, to);
-    }
-    lastLos = analyzeLos(
-      from: from,
-      to: to,
-      fromName: self?.name ?? active.name,
-      toName: dest.name,
-      freqMhz: radioSettings?.freqMhz ?? 869.525,
-      terrainM: terrain,
-    );
-    losBusy = false;
-    notifyListeners();
-    return lastLos!;
+    unawaited(computeLosMap());
   }
 
-  // ---- LOS-Karte: freie A/B-Punkte -------------------------------
+  // ---- LOS-Karte: Ziel B (Kontakt oder frei per Tap) ------------
 
   LosResult? lastLosMap;
   bool losMapBusy = false;
 
-  void setMapTapTarget(int t) {
-    mapTapTarget = t.clamp(0, 1);
-    notifyListeners();
-  }
-
-  /// Karten-Tap: setzt A oder B je nach [mapTapTarget], rückt automatisch
-  /// weiter und rechnet die Sichtlinie, sobald beide Enden stehen.
+  /// Karten-Tap: setzt das Ziel B und rechnet die Sichtlinie (A = ich).
   void placeTapped(GeoPoint p) {
     if (!p.isValid) return;
-    if (mapTapTarget == 0) {
-      mapPointA = p;
-      mapTapTarget = 1;
-    } else {
-      mapPointB = p;
-    }
-    notifyListeners();
-    unawaited(computeLosMap());
-  }
-
-  void setMapPointA(GeoPoint? p) {
-    mapPointA = p;
-    if (p == null) mapTapTarget = 0;
-    notifyListeners();
-    unawaited(computeLosMap());
-  }
-
-  void setMapPointB(GeoPoint? p) {
     mapPointB = p;
-    if (p == null) mapTapTarget = 1;
+    pathFocusKey = null;
     notifyListeners();
     unawaited(computeLosMap());
   }
 
   void clearMapPoints() {
-    mapPointA = null;
     mapPointB = null;
-    mapTapTarget = 0;
+    pathFocusKey = null;
     lastLosMap = null;
     losMapBusy = false;
     notifyListeners();
   }
 
   String _mapPointName(GeoPoint p) {
-    final selfPt = selfPoint();
-    final selfName = self?.name ?? 'Ich';
-    if (selfPt != null && _isSameGeo(selfPt, p)) return selfName;
     for (final c in contacts) {
       final cp = pointFor(c);
       if (cp != null && _isSameGeo(cp, p)) return c.name;
     }
-    return p == mapPointA ? 'Punkt A' : 'Punkt B';
+    return 'Punkt B';
   }
 
   bool _isSameGeo(GeoPoint a, GeoPoint b) {
@@ -1086,7 +1023,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> computeLosMap() async {
-    final a = mapPointA;
+    final a = selfPoint();
     final b = mapPointB;
     if (a == null || b == null) {
       lastLosMap = null;
@@ -1105,7 +1042,7 @@ class AppController extends ChangeNotifier {
     lastLosMap = analyzeLos(
       from: a,
       to: b,
-      fromName: _mapPointName(a),
+      fromName: self?.name ?? 'Ich',
       toName: _mapPointName(b),
       freqMhz: radioSettings?.freqMhz ?? 869.525,
       terrainM: terrain,
