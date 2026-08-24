@@ -11,9 +11,9 @@ import '../state/app_controller.dart';
 import 'theme.dart';
 import 'widgets/los_chart.dart';
 
-/// Sichtlinie (Pfad-Tab): Karte mit Ziel B — Kontakt per Dropdown oder frei per
-/// Tap. A ist immer die eigene Position (Bottom-Sheet). Unten als Overlay:
-/// Urteil + Profil + Kennzahlen.
+/// Sichtlinie (Pfad-Tab): Karte mit Zielen A/B — per Dropdown (B) oder frei
+/// per Karten-Tap; der A/B-Schalter bestimmt, welchen Punkt der Tap setzt.
+/// Ohne Tap gilt A = eigene Position. Unten als Overlay: Urteil + Profil.
 class LosMapPane extends StatefulWidget {
   const LosMapPane({super.key});
 
@@ -45,8 +45,7 @@ class _LosMapPaneState extends State<LosMapPane> {
 
   List<LatLng> _fitPoints(AppController app) {
     final pts = <LatLng>[
-      if (app.selfPoint() != null)
-        LatLng(app.selfPoint()!.lat, app.selfPoint()!.lon),
+      if (app.pointA() != null) LatLng(app.pointA()!.lat, app.pointA()!.lon),
       if (app.mapPointB != null) LatLng(app.mapPointB!.lat, app.mapPointB!.lon),
     ];
     if (_showNodes) {
@@ -95,19 +94,21 @@ class _LosMapPaneState extends State<LosMapPane> {
   }
 
   /// Statuszeile: Route zusammengefasst + was der nächste Tap macht.
-  Widget _hint(GeoPoint? self, GeoPoint? b, AppController app) {
-    final text = self == null
-        ? 'Eigene Position fehlt — A tippen'
-        : b == null
-        ? 'Karte tippen: Ziel B setzen'
-        : 'Ich → ${_matchName(app, b)} · Karte tippen: verschieben';
+  Widget _hint(GeoPoint? a, GeoPoint? b, AppController app) {
+    final aLabel = a == null
+        ? 'A fehlt'
+        : app.mapPointA != null
+        ? 'Punkt A'
+        : 'Ich';
+    final bLabel = b == null ? 'B fehlt' : _matchName(app, b);
+    final pick = app.losTapTarget == 'a' ? 'A' : 'B';
     return Row(
       children: [
         const Icon(Icons.touch_app, size: 15, color: meshTeal),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
-            text,
+            '$aLabel → $bLabel · Karte tippen: $pick',
             style: const TextStyle(fontSize: 12, color: meshPaper),
             overflow: TextOverflow.ellipsis,
           ),
@@ -116,19 +117,10 @@ class _LosMapPaneState extends State<LosMapPane> {
     );
   }
 
-  void _openSelfSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: meshCard,
-      builder: (_) => const _SelfFixSheet(),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
-    final self = app.selfPoint();
+    final aPoint = app.pointA();
     final b = app.mapPointB;
     final los = app.lastLosMap;
     final lineColor = _verdictColor(los);
@@ -138,15 +130,18 @@ class _LosMapPaneState extends State<LosMapPane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Zeile 1: A eintragen (Bottom-Sheet) + Ziel B + Kartensteuerung.
+        // Zeile 1: A/B-Wahl + Ziel-Dropdown + Kartensteuerung.
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
           child: Row(
             children: [
-              IconButton(
-                tooltip: 'Eigene Position (A)',
-                onPressed: () => _openSelfSheet(context),
-                icon: const Icon(Icons.gps_fixed),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'a', label: Text('A')),
+                  ButtonSegment(value: 'b', label: Text('B')),
+                ],
+                selected: {app.losTapTarget},
+                onSelectionChanged: (s) => app.setLosTapTarget(s.first),
               ),
               const SizedBox(width: 4),
               Expanded(
@@ -160,7 +155,9 @@ class _LosMapPaneState extends State<LosMapPane> {
               ),
               IconButton(
                 tooltip: 'Zurücksetzen',
-                onPressed: b == null ? null : app.clearMapPoints,
+                onPressed: (b == null && app.mapPointA == null)
+                    ? null
+                    : app.clearMapPoints,
                 icon: const Icon(Icons.refresh),
               ),
             ],
@@ -171,7 +168,7 @@ class _LosMapPaneState extends State<LosMapPane> {
           padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
           child: Row(
             children: [
-              Expanded(child: _hint(self, b, app)),
+              Expanded(child: _hint(aPoint, b, app)),
               const SizedBox(width: 4),
               FilterChip(
                 label: const Text('Knoten'),
@@ -230,12 +227,12 @@ class _LosMapPaneState extends State<LosMapPane> {
                           ),
                       ],
                     ),
-                  // A (ich) + B (Ziel) Pins.
+                  // A (frei getippt oder ich) + B (Ziel) Pins.
                   MarkerLayer(
                     markers: [
-                      if (self != null)
+                      if (aPoint != null)
                         Marker(
-                          point: LatLng(self.lat, self.lon),
+                          point: LatLng(aPoint.lat, aPoint.lon),
                           width: 36,
                           height: 36,
                           alignment: const Alignment(0, 1),
@@ -258,12 +255,12 @@ class _LosMapPaneState extends State<LosMapPane> {
                     ],
                   ),
                   // Verbindungslinie A–B, nach Urteil gefärbt.
-                  if (self != null && b != null)
+                  if (aPoint != null && b != null)
                     PolylineLayer(
                       polylines: [
                         Polyline(
                           points: [
-                            LatLng(self.lat, self.lon),
+                            LatLng(aPoint.lat, aPoint.lon),
                             LatLng(b.lat, b.lon),
                           ],
                           color: lineColor,
@@ -275,16 +272,16 @@ class _LosMapPaneState extends State<LosMapPane> {
                     ),
                 ],
               ),
-              // Oben links: eigene Position zentrieren.
-              if (self != null)
+              // Oben links: Punkt A zentrieren.
+              if (aPoint != null)
                 Align(
                   alignment: Alignment.topLeft,
                   child: Padding(
                     padding: const EdgeInsets.all(8),
                     child: IconButton.filledTonal(
-                      tooltip: 'Meine Position zentrieren',
+                      tooltip: 'Punkt A zentrieren',
                       onPressed: () {
-                        _controller.move(LatLng(self.lat, self.lon), 15);
+                        _controller.move(LatLng(aPoint.lat, aPoint.lon), 15);
                       },
                       icon: const Icon(Icons.my_location),
                     ),
@@ -367,127 +364,6 @@ class _TargetDropdown extends StatelessWidget {
             app.computeLos(c);
           },
         ),
-      ),
-    );
-  }
-}
-
-/// Bottom-Sheet: eigene Position (A) eintragen/justieren.
-class _SelfFixSheet extends StatelessWidget {
-  const _SelfFixSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppController>();
-    final p = app.selfPoint();
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 12,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Eigene Position (A)',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          if (p != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${p.lat.toStringAsFixed(4)}, ${p.lon.toStringAsFixed(4)} · ${p.elevM.round()} m + ${p.aglM.round()} m Antenne',
-                style: const TextStyle(fontSize: 12, color: meshPaper),
-              ),
-            ),
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Text(
-              'Kommt aus dem eigenen Advert, oder du tippst sie ein. '
-              'Antennenhöhe über Grund — nicht die Meereshöhe.',
-              style: TextStyle(fontSize: 12, color: meshPaper),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue:
-                      (app.selfLatOverride ?? app.self?.lat)?.toString() ?? '',
-                  decoration: const InputDecoration(
-                    labelText: 'Breite',
-                    isDense: true,
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  onChanged: (v) => app.setSelfFix(
-                    lat: double.tryParse(v.replaceAll(',', '.')),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextFormField(
-                  initialValue:
-                      (app.selfLonOverride ?? app.self?.lon)?.toString() ?? '',
-                  decoration: const InputDecoration(
-                    labelText: 'Länge',
-                    isDense: true,
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  onChanged: (v) => app.setSelfFix(
-                    lon: double.tryParse(v.replaceAll(',', '.')),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue:
-                      (app.selfAltOverride ?? app.self?.alt)?.toString() ?? '',
-                  decoration: const InputDecoration(
-                    labelText: 'Höhe m ü. NN',
-                    isDense: true,
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  onChanged: (v) => app.setSelfFix(
-                    alt: double.tryParse(v.replaceAll(',', '.')),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Antenne ${app.selfAglM.round()} m',
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-          Slider(
-            value: app.selfAglM.clamp(1, 30),
-            min: 1,
-            max: 30,
-            divisions: 29,
-            label: '${app.selfAglM.round()} m',
-            onChanged: (v) => app.setSelfFix(aglM: v),
-          ),
-        ],
       ),
     );
   }

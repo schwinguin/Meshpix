@@ -66,15 +66,18 @@ class AppController extends ChangeNotifier {
   final _pingTimers = <String, Timer>{};
   bool pingingAll = false;
   String? pathFocusKey;
-  double? selfLatOverride;
-  double? selfLonOverride;
-  double? selfAltOverride;
   double selfAglM = 2;
   bool useOnlineElevation = false;
   ElevationSource elevationSource = const SyntheticElevation();
 
-  /// LOS-Ziel B: Kontakt per Dropdown oder frei per Karten-Tap. A ist immer ich.
+  /// LOS-Ziel B: Kontakt per Dropdown oder frei per Karten-Tap.
   GeoPoint? mapPointB;
+
+  /// Freier Punkt A per Karten-Tap; ohne Tap gilt die eigene Position.
+  GeoPoint? mapPointA;
+
+  /// Welchen Punkt der nächste Karten-Tap setzt ('a' oder 'b').
+  String losTapTarget = 'b';
 
   CompanionClient? _bleClient;
   BleTransport? _bleTransport;
@@ -856,14 +859,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSelfFix({double? lat, double? lon, double? alt, double? aglM}) {
-    if (lat != null) selfLatOverride = lat;
-    if (lon != null) selfLonOverride = lon;
-    if (alt != null) selfAltOverride = alt;
-    if (aglM != null) selfAglM = aglM;
-    notifyListeners();
-  }
-
   void setOnlineElevation(bool on) {
     useOnlineElevation = on;
     elevationSource = on ? OpenMeteoElevation() : const SyntheticElevation();
@@ -957,13 +952,16 @@ class AppController extends ChangeNotifier {
 
   GeoPoint? selfPoint() {
     final me = self;
-    final lat = selfLatOverride ?? me?.lat;
-    final lon = selfLonOverride ?? me?.lon;
-    final alt = selfAltOverride ?? me?.alt ?? 0;
+    final lat = me?.lat;
+    final lon = me?.lon;
+    final alt = me?.alt ?? 0;
     if (lat == null || lon == null) return null;
     final p = GeoPoint(lat: lat, lon: lon, elevM: alt, aglM: selfAglM);
     return p.isValid ? p : null;
   }
+
+  /// Punkt A wie er gerade gilt: frei getappt, sonst die eigene Position.
+  GeoPoint? pointA() => mapPointA ?? selfPoint();
 
   GeoPoint? pointFor(MeshContact c, {double? aglM}) {
     if (!c.hasLocation) return null;
@@ -977,7 +975,7 @@ class AppController extends ChangeNotifier {
   }
 
   /// Sicht zu einem Kontakt prüfen: setzt B auf den Kontakt, springt in den
-  /// Sichtlinie-Tab und rechnet die Linie (A = ich).
+  /// Sichtlinie-Tab und rechnet die Linie (A = Punkt A, sonst ich).
   void computeLos(MeshContact dest, {double? destAgl}) {
     final to = pointFor(dest, aglM: destAgl);
     if (to == null) return;
@@ -993,16 +991,27 @@ class AppController extends ChangeNotifier {
   LosResult? lastLosMap;
   bool losMapBusy = false;
 
-  /// Karten-Tap: setzt das Ziel B und rechnet die Sichtlinie (A = ich).
+  /// Karten-Tap: setzt Punkt A oder B (je nach losTapTarget) und rechnet die
+  /// Sichtlinie neu.
   void placeTapped(GeoPoint p) {
     if (!p.isValid) return;
-    mapPointB = p;
+    if (losTapTarget == 'a') {
+      mapPointA = p;
+    } else {
+      mapPointB = p;
+    }
     pathFocusKey = null;
     notifyListeners();
     unawaited(computeLosMap());
   }
 
+  void setLosTapTarget(String target) {
+    losTapTarget = target;
+    notifyListeners();
+  }
+
   void clearMapPoints() {
+    mapPointA = null;
     mapPointB = null;
     pathFocusKey = null;
     lastLosMap = null;
@@ -1023,7 +1032,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> computeLosMap() async {
-    final a = selfPoint();
+    final a = pointA();
     final b = mapPointB;
     if (a == null || b == null) {
       lastLosMap = null;
@@ -1042,7 +1051,7 @@ class AppController extends ChangeNotifier {
     lastLosMap = analyzeLos(
       from: a,
       to: b,
-      fromName: self?.name ?? 'Ich',
+      fromName: mapPointA != null ? 'Punkt A' : (self?.name ?? 'Ich'),
       toName: _mapPointName(b),
       freqMhz: radioSettings?.freqMhz ?? 869.525,
       terrainM: terrain,
