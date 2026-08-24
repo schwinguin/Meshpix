@@ -12,7 +12,8 @@ import 'theme.dart';
 import 'widgets/los_chart.dart';
 
 /// Sichtlinie (Pfad-Tab): Karte mit Ziel B — Kontakt per Dropdown oder frei per
-/// Tap. A ist immer die eigene Position. Darunter Urteil + Profil + Kennzahlen.
+/// Tap. A ist immer die eigene Position (Bottom-Sheet). Unten als Overlay:
+/// Urteil + Profil + Kennzahlen.
 class LosMapPane extends StatefulWidget {
   const LosMapPane({super.key});
 
@@ -23,6 +24,10 @@ class LosMapPane extends StatefulWidget {
 class _LosMapPaneState extends State<LosMapPane> {
   final MapController _controller = MapController();
   bool _showNodes = true;
+
+  /// Zuletzt weggeklicktes Ergebnis; ein neues Ergebnis blendet das Detail
+  /// automatisch wieder ein.
+  LosResult? _dismissedLos;
 
   Color _verdictColor(LosResult? r) => switch (r?.verdict) {
     LosVerdict.clear => meshTeal,
@@ -89,36 +94,34 @@ class _LosMapPaneState extends State<LosMapPane> {
     return 'Punkt B';
   }
 
-  Widget _hint(GeoPoint? self, GeoPoint? b) {
+  /// Statuszeile: Route zusammengefasst + was der nächste Tap macht.
+  Widget _hint(GeoPoint? self, GeoPoint? b, AppController app) {
     final text = self == null
-        ? 'Eigene Position fehlt — siehe „Ich"'
+        ? 'Eigene Position fehlt — A tippen'
         : b == null
-        ? 'Ziel setzen: Karte tippen'
-        : 'Karte tippen: Ziel verschieben';
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(20),
+        ? 'Karte tippen: Ziel B setzen'
+        : 'Ich → ${_matchName(app, b)} · Karte tippen: verschieben';
+    return Row(
+      children: [
+        const Icon(Icons.touch_app, size: 15, color: meshTeal),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 12, color: meshPaper),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.touch_app, size: 15, color: meshTeal),
-            const SizedBox(width: 6),
-            Text(
-              text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
+    );
+  }
+
+  void _openSelfSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: meshCard,
+      builder: (_) => const _SelfFixSheet(),
     );
   }
 
@@ -131,21 +134,21 @@ class _LosMapPaneState extends State<LosMapPane> {
     final lineColor = _verdictColor(los);
     final withFix = app.contacts.where((c) => c.hasLocation).toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    final targetName = b == null ? '—' : _matchName(app, b);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // A = ich (Position + Fix).
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: _SelfFix(),
-        ),
-        // B = Ziel: Kontakt-Dropdown + Fit/Reset.
+        // Zeile 1: A eintragen (Bottom-Sheet) + Ziel B + Kartensteuerung.
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
           child: Row(
             children: [
+              IconButton(
+                tooltip: 'Eigene Position (A)',
+                onPressed: () => _openSelfSheet(context),
+                icon: const Icon(Icons.gps_fixed),
+              ),
+              const SizedBox(width: 4),
               Expanded(
                 child: _TargetDropdown(app: app, withFix: withFix, current: b),
               ),
@@ -163,18 +166,19 @@ class _LosMapPaneState extends State<LosMapPane> {
             ],
           ),
         ),
-        // Statuszeile + Gelände-Toggle.
+        // Zeile 2: Status + Darstellung-Toggles.
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
           child: Row(
             children: [
-              Expanded(
-                child: Text(
-                  'Ich → $targetName',
-                  style: const TextStyle(fontSize: 12, color: meshPaper),
-                  overflow: TextOverflow.ellipsis,
-                ),
+              Expanded(child: _hint(self, b, app)),
+              const SizedBox(width: 4),
+              FilterChip(
+                label: const Text('Knoten'),
+                selected: _showNodes,
+                onSelected: (v) => setState(() => _showNodes = v),
               ),
+              const SizedBox(width: 4),
               FilterChip(
                 label: const Text('Gelände'),
                 selected: app.useOnlineElevation,
@@ -183,141 +187,133 @@ class _LosMapPaneState extends State<LosMapPane> {
             ],
           ),
         ),
-        // Karte.
+        // Karte: volle Fläche, Detail unten als Overlay.
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: Stack(
-              children: [
-                FlutterMap(
-                  mapController: _controller,
-                  options: MapOptions(
-                    initialCenter: _centerOf(context.read<AppController>()),
-                    initialZoom: 12,
-                    onTap: (tapPos, point) {
-                      app.placeTapped(
-                        GeoPoint(lat: point.latitude, lon: point.longitude),
-                      );
-                    },
+          child: Stack(
+            children: [
+              FlutterMap(
+                mapController: _controller,
+                options: MapOptions(
+                  initialCenter: _centerOf(context.read<AppController>()),
+                  initialZoom: 12,
+                  onTap: (tapPos, point) {
+                    app.placeTapped(
+                      GeoPoint(lat: point.latitude, lon: point.longitude),
+                    );
+                  },
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
+                    maxZoom: 19,
+                    // CARTO-Basemap (OSM-Daten): zuverlaessiges Deep-Zoom,
+                    // kein OSM-Rate-Limit. {s} verteilt auf a/b/c.
+                    tileProvider: NetworkTileProvider(
+                      headers: {
+                        'User-Agent': 'MeshPix/1.0 (https://github.com/schwinguin/Meshpix)',
+                      },
+                    ),
                   ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
-                      maxZoom: 19,
-                      // CARTO-Basemap (OSM-Daten): zuverlaessiges Deep-Zoom,
-                      // kein OSM-Rate-Limit. {s} verteilt auf a/b/c.
-                      tileProvider: NetworkTileProvider(
-                        headers: {
-                          'User-Agent': 'MeshPix/1.0 (https://github.com/schwinguin/Meshpix)',
-                        },
-                      ),
-                    ),
-                    const SimpleAttributionWidget(
-                      source: Text('© OpenStreetMap-Mitwirkende · © CARTO'),
-                    ),
-                    // Knoten des Mesh (inkl. eigener Position).
-                    if (_showNodes)
-                      MarkerLayer(
-                        markers: [
-                          for (final p in _nodePoints(app))
-                            Marker(
-                              point: LatLng(p.lat, p.lon),
-                              width: 26,
-                              height: 26,
-                              child: _NodePin(point: p),
-                            ),
-                        ],
-                      ),
-                    // A (ich) + B (Ziel) Pins.
+                  const SimpleAttributionWidget(
+                    source: Text('© OpenStreetMap-Mitwirkende · © CARTO'),
+                  ),
+                  // Knoten des Mesh (inkl. eigener Position).
+                  if (_showNodes)
                     MarkerLayer(
                       markers: [
-                        if (self != null)
+                        for (final p in _nodePoints(app))
                           Marker(
-                            point: LatLng(self.lat, self.lon),
-                            width: 36,
-                            height: 36,
-                            alignment: const Alignment(0, 1),
-                            child: const _EndpointPin(
-                              label: 'A',
-                              color: meshAmber,
-                            ),
-                          ),
-                        if (b != null)
-                          Marker(
-                            point: LatLng(b.lat, b.lon),
-                            width: 36,
-                            height: 36,
-                            alignment: const Alignment(0, 1),
-                            child: const _EndpointPin(
-                              label: 'B',
-                              color: meshTeal,
-                            ),
+                            point: LatLng(p.lat, p.lon),
+                            width: 26,
+                            height: 26,
+                            child: _NodePin(point: p),
                           ),
                       ],
                     ),
-                    // Verbindungslinie A–B, nach Urteil gefärbt.
-                    if (self != null && b != null)
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: [
-                              LatLng(self.lat, self.lon),
-                              LatLng(b.lat, b.lon),
-                            ],
-                            color: lineColor,
-                            strokeWidth: 3.5,
-                            borderStrokeWidth: 6,
-                            borderColor: Colors.white.withValues(alpha: 0.85),
+                  // A (ich) + B (Ziel) Pins.
+                  MarkerLayer(
+                    markers: [
+                      if (self != null)
+                        Marker(
+                          point: LatLng(self.lat, self.lon),
+                          width: 36,
+                          height: 36,
+                          alignment: const Alignment(0, 1),
+                          child: const _EndpointPin(
+                            label: 'A',
+                            color: meshAmber,
                           ),
-                        ],
-                      ),
-                  ],
-                ),
-                // Hinweis oben: was der nächste Tap macht.
-                Align(alignment: Alignment.topCenter, child: _hint(self, b)),
-                // Unten rechts: Knoten ein/aus.
+                        ),
+                      if (b != null)
+                        Marker(
+                          point: LatLng(b.lat, b.lon),
+                          width: 36,
+                          height: 36,
+                          alignment: const Alignment(0, 1),
+                          child: const _EndpointPin(
+                            label: 'B',
+                            color: meshTeal,
+                          ),
+                        ),
+                    ],
+                  ),
+                  // Verbindungslinie A–B, nach Urteil gefärbt.
+                  if (self != null && b != null)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: [
+                            LatLng(self.lat, self.lon),
+                            LatLng(b.lat, b.lon),
+                          ],
+                          color: lineColor,
+                          strokeWidth: 3.5,
+                          borderStrokeWidth: 6,
+                          borderColor: Colors.white.withValues(alpha: 0.85),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              // Oben links: eigene Position zentrieren.
+              if (self != null)
                 Align(
-                  alignment: Alignment.bottomRight,
+                  alignment: Alignment.topLeft,
                   child: Padding(
                     padding: const EdgeInsets.all(8),
-                    child: FilterChip(
-                      label: const Text('Knoten'),
-                      selected: _showNodes,
-                      onSelected: (v) => setState(() => _showNodes = v),
+                    child: IconButton.filledTonal(
+                      tooltip: 'Meine Position zentrieren',
+                      onPressed: () {
+                        _controller.move(LatLng(self.lat, self.lon), 15);
+                      },
+                      icon: const Icon(Icons.my_location),
                     ),
                   ),
                 ),
-                // Unten links: eigene Position zentrieren.
-                if (self != null)
-                  Align(
-                    alignment: Alignment.bottomLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: IconButton.filledTonal(
-                        tooltip: 'Meine Position zentrieren',
-                        onPressed: () {
-                          _controller.move(LatLng(self.lat, self.lon), 15);
-                        },
-                        icon: const Icon(Icons.my_location),
-                      ),
-                    ),
+              if (app.losMapBusy)
+                const Align(
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: CircularProgressIndicator(),
                   ),
-                if (app.losMapBusy)
-                  const Align(
-                    alignment: Alignment.center,
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: CircularProgressIndicator(),
-                    ),
+                ),
+              // Unten: Urteil + Profil + Kennzahlen (wegklickbar).
+              if (los != null &&
+                  los.verdict != LosVerdict.noFix &&
+                  los != _dismissedLos)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _LosDetail(
+                    los: los,
+                    color: lineColor,
+                    onDismiss: () => setState(() => _dismissedLos = los),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
-        // Urteil + Profil + Kennzahlen.
-        if (los != null && los.verdict != LosVerdict.noFix)
-          _LosDetail(los: los, color: lineColor),
       ],
     );
   }
@@ -376,104 +372,123 @@ class _TargetDropdown extends StatelessWidget {
   }
 }
 
-class _SelfFix extends StatelessWidget {
-  const _SelfFix();
+/// Bottom-Sheet: eigene Position (A) eintragen/justieren.
+class _SelfFixSheet extends StatelessWidget {
+  const _SelfFixSheet();
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppController>();
     final p = app.selfPoint();
-    return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: EdgeInsets.zero,
-      title: Text(
-        p == null
-            ? 'Ich: Position fehlt — antippen und eintragen'
-            : 'Ich: ${p.lat.toStringAsFixed(4)}, ${p.lon.toStringAsFixed(4)} · ${p.elevM.round()} m + ${p.aglM.round()} m Antenne',
-        style: const TextStyle(fontSize: 13),
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
       ),
-      children: [
-        const Text(
-          'Kommt aus dem eigenen Advert, oder du tippst sie. Antennenhöhe über Grund — nicht die Meereshöhe.',
-          style: TextStyle(fontSize: 12, color: meshPaper),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                initialValue:
-                    (app.selfLatOverride ?? app.self?.lat)?.toString() ?? '',
-                decoration: const InputDecoration(
-                  labelText: 'Breite',
-                  isDense: true,
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                  signed: true,
-                ),
-                onChanged: (v) => app.setSelfFix(
-                  lat: double.tryParse(v.replaceAll(',', '.')),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextFormField(
-                initialValue:
-                    (app.selfLonOverride ?? app.self?.lon)?.toString() ?? '',
-                decoration: const InputDecoration(
-                  labelText: 'Länge',
-                  isDense: true,
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                  signed: true,
-                ),
-                onChanged: (v) => app.setSelfFix(
-                  lon: double.tryParse(v.replaceAll(',', '.')),
-                ),
-              ),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                initialValue:
-                    (app.selfAltOverride ?? app.self?.alt)?.toString() ?? '',
-                decoration: const InputDecoration(
-                  labelText: 'Höhe m ü. NN',
-                  isDense: true,
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                  signed: true,
-                ),
-                onChanged: (v) => app.setSelfFix(
-                  alt: double.tryParse(v.replaceAll(',', '.')),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Eigene Position (A)',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          if (p != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'Antenne ${app.selfAglM.round()} m',
-                style: const TextStyle(fontSize: 13),
+                '${p.lat.toStringAsFixed(4)}, ${p.lon.toStringAsFixed(4)} · ${p.elevM.round()} m + ${p.aglM.round()} m Antenne',
+                style: const TextStyle(fontSize: 12, color: meshPaper),
               ),
             ),
-          ],
-        ),
-        Slider(
-          value: app.selfAglM.clamp(1, 30),
-          min: 1,
-          max: 30,
-          divisions: 29,
-          label: '${app.selfAglM.round()} m',
-          onChanged: (v) => app.setSelfFix(aglM: v),
-        ),
-      ],
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'Kommt aus dem eigenen Advert, oder du tippst sie ein. '
+              'Antennenhöhe über Grund — nicht die Meereshöhe.',
+              style: TextStyle(fontSize: 12, color: meshPaper),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue:
+                      (app.selfLatOverride ?? app.self?.lat)?.toString() ?? '',
+                  decoration: const InputDecoration(
+                    labelText: 'Breite',
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  onChanged: (v) => app.setSelfFix(
+                    lat: double.tryParse(v.replaceAll(',', '.')),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextFormField(
+                  initialValue:
+                      (app.selfLonOverride ?? app.self?.lon)?.toString() ?? '',
+                  decoration: const InputDecoration(
+                    labelText: 'Länge',
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  onChanged: (v) => app.setSelfFix(
+                    lon: double.tryParse(v.replaceAll(',', '.')),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue:
+                      (app.selfAltOverride ?? app.self?.alt)?.toString() ?? '',
+                  decoration: const InputDecoration(
+                    labelText: 'Höhe m ü. NN',
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  onChanged: (v) => app.setSelfFix(
+                    alt: double.tryParse(v.replaceAll(',', '.')),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Antenne ${app.selfAglM.round()} m',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: app.selfAglM.clamp(1, 30),
+            min: 1,
+            max: 30,
+            divisions: 29,
+            label: '${app.selfAglM.round()} m',
+            onChanged: (v) => app.setSelfFix(aglM: v),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -546,63 +561,104 @@ class _NodePin extends StatelessWidget {
   }
 }
 
+/// Urteil + Profil + Kennzahlen — Overlay unten auf der Karte, begrenzt auf
+/// 45 % der Bildhöhe, wegklickbar (neue Rechnung blendet es wieder ein).
 class _LosDetail extends StatelessWidget {
-  const _LosDetail({required this.los, required this.color});
+  const _LosDetail({
+    required this.los,
+    required this.color,
+    required this.onDismiss,
+  });
   final LosResult los;
   final Color color;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: meshCard,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color.withValues(alpha: 0.6)),
+              color: meshCard,
+              border: Border.all(color: Color(0xFF33343E)),
             ),
-            child: Text(
-              '${los.fromName} → ${los.toName} · ${los.verdictLabel}',
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
+            padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: color.withValues(alpha: 0.6),
+                            ),
+                          ),
+                          child: Text(
+                            '${los.fromName} → ${los.toName} · ${los.verdictLabel}',
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Ausblenden',
+                        onPressed: onDismiss,
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  LosChart(result: los, height: 110),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 6,
+                    children: [
+                      _stat('Distanz', formatKm(los.distanceM)),
+                      _stat('Richtung', formatBearing(los.bearing)),
+                      _stat('FSPL', '${los.fsplDb.toStringAsFixed(0)} dB'),
+                      _stat('Freihalte', '${los.worstClearanceM.round()} m'),
+                      _stat(
+                        'Fresnel',
+                        '${(los.minFresnelClearPct * 100).clamp(0, 999).round()} %',
+                      ),
+                      _stat(
+                        'Horizont',
+                        formatKm(
+                          radioHorizonM(los.from.antennaM, los.to.antennaM),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    los.verdictHint,
+                    style: const TextStyle(fontSize: 12, color: meshPaper),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          LosChart(result: los, height: 110),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 14,
-            runSpacing: 6,
-            children: [
-              _stat('Distanz', formatKm(los.distanceM)),
-              _stat('Richtung', formatBearing(los.bearing)),
-              _stat('FSPL', '${los.fsplDb.toStringAsFixed(0)} dB'),
-              _stat('Freihalte', '${los.worstClearanceM.round()} m'),
-              _stat(
-                'Fresnel',
-                '${(los.minFresnelClearPct * 100).clamp(0, 999).round()} %',
-              ),
-              _stat(
-                'Horizont',
-                formatKm(radioHorizonM(los.from.antennaM, los.to.antennaM)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            los.verdictHint,
-            style: const TextStyle(fontSize: 12, color: meshPaper),
-          ),
-        ],
+        ),
       ),
     );
   }

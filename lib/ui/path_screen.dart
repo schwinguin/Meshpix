@@ -53,20 +53,6 @@ class _PathPaneState extends State<PathPane>
       });
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Pfad', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 2),
-              const Text(
-                'Wer antwortet? Wie laut ist der Äther? Ist die Luftlinie frei?',
-                style: TextStyle(color: meshPaper),
-              ),
-            ],
-          ),
-        ),
         TabBar(
           controller: _tabs,
           indicatorColor: meshTeal,
