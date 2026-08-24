@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import 'chat_store.dart';
 import '../codec/mp1.dart';
 import '../codec/rgba.dart';
 import '../companion/ble.dart';
@@ -97,6 +98,9 @@ class AppController extends ChangeNotifier {
   bool _prefsLoaded = false;
   String? _lastDeviceId;
   String? _lastDeviceName;
+  final ChatStore _chatStore = ChatStore();
+  Timer? _saveTimer;
+  bool _gone = false;
   StreamSubscription<void>? _linkLostSub;
   bool _userDisconnected = false;
   int _reconnectAttempts = 0;
@@ -189,8 +193,86 @@ class AppController extends ChangeNotifier {
     }
     final convo = _convoForContact(active.id, contact);
     active.conversations.add(convo);
+    _scheduleSave();
     open(convo);
     return convo;
+  }
+
+  /// Speicher-Schlüssel für den Chat-Verlauf: BLE-Geräte-ID; andere
+  /// Session-Typen (Simulatoren/Tests) bleiben unpersistent.
+  String? get _chatKey => session?.id == 'ble' ? _lastDeviceId : null;
+
+  /// Verlauf bei jeder Änderung speichern (Debounce: 1 s).
+  void _scheduleSave() {
+    final key = _chatKey;
+    final s = session;
+    if (_gone || key == null || s == null) return;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(
+      const Duration(seconds: 1),
+      () => unawaited(_saveNow(key, s)),
+    );
+  }
+
+  /// Unmittelbar speichern (App-Exit, Hintergrund).
+  void flushSave() {
+    _saveTimer?.cancel();
+    final key = _chatKey;
+    final s = session;
+    if (key == null || s == null) return;
+    unawaited(_saveNow(key, s));
+  }
+
+  Future<void> _saveNow(String key, NodeSession s) async {
+    if (_gone) return;
+    try {
+      await _chatStore.save(s.conversations, key);
+    } catch (_) {
+      // Verlaufs-Sicherung darf die App nie stören.
+    }
+  }
+
+  /// Lokalen Verlauf für [nodeKey] in die neue Session wiederherstellen:
+  /// Channel-Konversationen nach Index, DMs nach Key. DMs, deren Kontakt
+  /// auf dem Gerät nicht (mehr) existiert, werden als Platzhalter
+  /// wiederbelebt.
+  Future<void> _restoreHistory(NodeSession s, String nodeKey) async {
+    final stored = await _chatStore.load(nodeKey);
+    if (stored.isEmpty) return;
+    for (final sc in stored) {
+      Conversation? conv;
+      if (sc.isChannel) {
+        for (final c in s.conversations) {
+          if (c.isChannel && c.channelIdx == sc.channelIdx) {
+            conv = c;
+            break;
+          }
+        }
+      } else if (sc.peerKey != null) {
+        final key = sc.peerKey!;
+        for (final c in s.conversations) {
+          if (c.isChannel || c.peerKey == null) continue;
+          if (_keyEq(c.peerKey!, key)) {
+            conv = c;
+            break;
+          }
+        }
+      }
+      if (conv == null) {
+        if (sc.isChannel || sc.peerKey == null) continue;
+        conv = Conversation(
+          id: '${s.id}-dm-${_hex(sc.peerKey!)}',
+          title: sc.title,
+          isChannel: false,
+          peerKey: sc.peerKey,
+          peerType: sc.peerType,
+          favourite: sc.favourite,
+        );
+        s.conversations.add(conv);
+      }
+      conv.messages.addAll(sc.messages);
+      conv.messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    }
   }
 
   /// Lädt lokale Einstellungen (Block/Mute, letztes Gerät) und versucht
@@ -333,6 +415,7 @@ class AppController extends ChangeNotifier {
       _lastDeviceId = remoteId;
       _lastDeviceName = resolved;
       unawaited(LocalPrefs.saveDevice(remoteId, resolved));
+      await _restoreHistory(newSession, remoteId);
       status = 'Verbunden mit $resolved';
       notifyListeners();
       unawaited(_processPendingContactUri());
@@ -426,6 +509,7 @@ class AppController extends ChangeNotifier {
   void _onBleLinkLost() {
     _linkLostSub?.cancel();
     _linkLostSub = null;
+    _scheduleSave();
     unawaited(_bleTransport?.close().catchError((_) {}));
     _disconnectBle();
     _disposeSession();
@@ -510,6 +594,7 @@ class AppController extends ChangeNotifier {
       channelAcks: conv.isChannel ? _acksForSend() : null,
     );
     conv.messages.add(msg);
+    _scheduleSave();
     notifyListeners();
     try {
       final receipt = await active.engine.sendText(destFor(conv), trimmed);
@@ -576,6 +661,7 @@ class AppController extends ChangeNotifier {
         channelAcks: conv.isChannel ? _acksForSend() : null,
       ),
     );
+    _scheduleSave();
     notifyListeners();
   }
 
@@ -674,6 +760,7 @@ class AppController extends ChangeNotifier {
           channelIdx: free,
         ),
       );
+      _scheduleSave();
     }
     error = null;
     status = 'Kanal „$trimmed" angelegt (Kanal $free)';
@@ -695,6 +782,7 @@ class AppController extends ChangeNotifier {
     await companion?.setFavourite(contact, !contact.isFavourite);
     final convo = _findConvoFor(active, contact.publicKey);
     if (convo != null) convo.favourite = !contact.isFavourite;
+    _scheduleSave();
     notifyListeners();
   }
 
@@ -704,6 +792,7 @@ class AppController extends ChangeNotifier {
       if (c.isChannel || c.peerKey == null) return false;
       return _keyEq(c.peerKey!, contact.publicKey);
     });
+    _scheduleSave();
     notifyListeners();
   }
 
@@ -722,6 +811,7 @@ class AppController extends ChangeNotifier {
     }
     if (title != null) mutedChannels.remove(title);
     active.conversations.removeWhere((c) => c.isChannel && c.channelIdx == idx);
+    _scheduleSave();
     error = null;
     status = title == null || title.isEmpty
         ? 'Kanal $idx gelöscht'
@@ -734,6 +824,7 @@ class AppController extends ChangeNotifier {
     _userDisconnected = true;
     _reconnectAttempts = 0;
     unawaited(_bleTransport?.close().catchError((_) {}));
+    _scheduleSave();
     _disconnectBle();
     _disposeSession();
     _open = null;
@@ -1173,6 +1264,7 @@ class AppController extends ChangeNotifier {
     if (_findConvoFor(active, parsed.publicKey) == null) {
       active.conversations.add(_convoForContact(active.id, parsed));
     }
+    _scheduleSave();
     status = '${parsed.name} importiert';
     notifyListeners();
     return null;
@@ -1275,6 +1367,7 @@ class AppController extends ChangeNotifier {
             delivery: DeliveryStatus.delivered,
             rttMs: rtt,
           );
+          _scheduleSave();
           return;
         }
       }
@@ -1294,6 +1387,7 @@ class AppController extends ChangeNotifier {
       return;
     }
     session.conversations.add(_convoForContact(session.id, contact));
+    _scheduleSave();
   }
 
   Conversation? _findConvoByPrefix(NodeSession session, Uint8List? prefix) {
@@ -1324,6 +1418,7 @@ class AppController extends ChangeNotifier {
           favourite: c.isFavourite,
         ),
       );
+      _scheduleSave();
       return session.conversations.last;
     }
     final hex = prefix.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
@@ -1335,6 +1430,7 @@ class AppController extends ChangeNotifier {
       peerType: AdvType.none,
     );
     session.conversations.add(conv);
+    _scheduleSave();
     return conv;
   }
 
@@ -1421,6 +1517,7 @@ class AppController extends ChangeNotifier {
           conv.unread += 1;
         }
       }
+      _scheduleSave();
     } else if (e.isText) {
       conv.messages.add(
         ChatMessage(
@@ -1439,6 +1536,7 @@ class AppController extends ChangeNotifier {
           senderName: _nameForPrefix(session, e.senderPrefix),
         ),
       );
+      _scheduleSave();
       if (!identical(conv, _open) && !muted) {
         conv.unread += 1;
       }
@@ -1650,6 +1748,7 @@ class AppController extends ChangeNotifier {
           senderName: senderName,
         ),
       );
+      _scheduleSave();
       if (!identical(conv, _open) && !muted) {
         conv.unread += 1;
       }
@@ -1692,6 +1791,7 @@ class AppController extends ChangeNotifier {
         if (!m.outgoing || m.catchUpId != pkt.msgId) continue;
         conv.messages[i] = m.withPeerAck(fromHex, ChannelPeerState.delivered);
         changed = true;
+        _scheduleSave();
       }
     }
     if (changed) notifyListeners();
@@ -1744,6 +1844,7 @@ class AppController extends ChangeNotifier {
             ChannelPeerState.replayed,
           );
           sent++;
+          _scheduleSave();
         } catch (_) {}
       }
     }
@@ -1769,6 +1870,13 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _gone = true;
+    _saveTimer?.cancel();
+    final s = session;
+    final key = _chatKey;
+    if (s != null && key != null) {
+      unawaited(_saveNow(key, s));
+    }
     for (final t in _pingTimers.values) {
       t.cancel();
     }

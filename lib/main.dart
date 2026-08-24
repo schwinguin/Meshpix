@@ -27,14 +27,40 @@ void main() {
   runApp(const MeshPixApp());
 }
 
-class MeshPixApp extends StatelessWidget {
+class MeshPixApp extends StatefulWidget {
   const MeshPixApp({super.key});
 
   @override
+  State<MeshPixApp> createState() => _MeshPixAppState();
+}
+
+class _MeshPixAppState extends State<MeshPixApp> with WidgetsBindingObserver {
+  late final AppController _controller = AppController()..init();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Vor dem möglichen Kill durch das OS den Verlauf sicher schreiben.
+    if (state == AppLifecycleState.paused) {
+      _controller.flushSave();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) {
-        final controller = AppController()..init();
+    return ChangeNotifierProvider<AppController>(
+      create: (_) {
         // meshcore://contact/add/… — QR-Karten und geteilte Kontakte.
         // App-Links (Android) liefern Cold-Start-Links über initialLinks;
         // laufende Links über stream.
@@ -43,15 +69,15 @@ class MeshPixApp extends StatelessWidget {
           appLinks
               .getInitialLink()
               .then((uri) async {
-                await _handleContactLink(controller, uri);
+                await _handleContactLink(_controller, uri);
               })
               .catchError((Object e) => debugPrint('AppLinks init: $e')),
         );
         appLinks.uriLinkStream.listen(
-          (uri) => _handleContactLink(controller, uri),
+          (uri) => _handleContactLink(_controller, uri),
           onError: (Object e) => debugPrint('AppLinks stream: $e'),
         );
-        return controller;
+        return _controller;
       },
       child: MaterialApp(
         title: 'MeshPix',
