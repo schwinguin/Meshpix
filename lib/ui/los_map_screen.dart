@@ -95,11 +95,7 @@ class _LosMapPaneState extends State<LosMapPane> {
 
   /// Statuszeile: Route zusammengefasst + was der nächste Tap macht.
   Widget _hint(GeoPoint? a, GeoPoint? b, AppController app) {
-    final aLabel = a == null
-        ? 'A fehlt'
-        : app.mapPointA != null
-        ? 'Punkt A'
-        : 'Ich';
+    final aLabel = a == null ? 'A fehlt' : 'Punkt A';
     final bLabel = b == null ? 'B fehlt' : _matchName(app, b);
     final pick = app.losTapTarget == 'a' ? 'A' : 'B';
     return Row(
@@ -227,7 +223,8 @@ class _LosMapPaneState extends State<LosMapPane> {
                           ),
                       ],
                     ),
-                  // A (frei getippt oder ich) + B (Ziel) Pins.
+                  // A + B Pins — Pin antippen wählt, welchen Punkt der nächste
+                  // Karten-Tap verschiebt.
                   MarkerLayer(
                     markers: [
                       if (aPoint != null)
@@ -236,9 +233,12 @@ class _LosMapPaneState extends State<LosMapPane> {
                           width: 36,
                           height: 36,
                           alignment: const Alignment(0, 1),
-                          child: const _EndpointPin(
-                            label: 'A',
-                            color: meshAmber,
+                          child: GestureDetector(
+                            onTap: () => app.setLosTapTarget('a'),
+                            child: const _EndpointPin(
+                              label: 'A',
+                              color: meshAmber,
+                            ),
                           ),
                         ),
                       if (b != null)
@@ -247,9 +247,12 @@ class _LosMapPaneState extends State<LosMapPane> {
                           width: 36,
                           height: 36,
                           alignment: const Alignment(0, 1),
-                          child: const _EndpointPin(
-                            label: 'B',
-                            color: meshTeal,
+                          child: GestureDetector(
+                            onTap: () => app.setLosTapTarget('b'),
+                            child: const _EndpointPin(
+                              label: 'B',
+                              color: meshTeal,
+                            ),
                           ),
                         ),
                     ],
