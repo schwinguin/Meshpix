@@ -168,12 +168,10 @@ class _LosMapPaneState extends State<LosMapPane> {
                       ),
                       children: [
                         TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png',
                           maxZoom: 19,
-                          // OSM blockt generische Clients („tile usage policy",
-                          // osm.wiki/blocked): User-Agent mit App + Version +
-                          // Kontakt-URL.
+                          // CARTO-Basemap (OSM-Daten): zuverlaessiges Deep-Zoom,
+                          // kein OSM-Rate-Limit. {s} verteilt auf a/b/c.
                           tileProvider: NetworkTileProvider(
                             headers: {
                               'User-Agent': 'MeshPix/1.0 (https://github.com/schwinguin/Meshpix)',
@@ -181,7 +179,7 @@ class _LosMapPaneState extends State<LosMapPane> {
                           ),
                         ),
                         const SimpleAttributionWidget(
-                          source: Text('© OpenStreetMap-Mitwirkende'),
+                          source: Text('© OpenStreetMap-Mitwirkende · © CARTO'),
                         ),
                         // Knoten des Mesh (inkl. eigener Position).
                         if (_showNodes)
