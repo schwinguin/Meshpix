@@ -6,6 +6,7 @@ import '../geo/los.dart';
 import '../models/contact.dart';
 import '../models/signal.dart';
 import '../state/app_controller.dart';
+import 'los_map_screen.dart';
 import 'theme.dart';
 import 'widgets/los_chart.dart';
 import 'widgets/noise_gauge.dart';
@@ -24,7 +25,24 @@ class PathPane extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
       children: [
-        Text('Pfad', style: Theme.of(context).textTheme.headlineSmall),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Pfad',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const LosMapScreen()),
+              ),
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('Karte'),
+            ),
+          ],
+        ),
         const SizedBox(height: 4),
         const Text(
           'Drei Fragen, von nah nach weit: Wer antwortet? Wie laut ist der Äther? Ist die Luftlinie frei?',

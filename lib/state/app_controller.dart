@@ -71,6 +71,16 @@ class AppController extends ChangeNotifier {
   bool useOnlineElevation = false;
   ElevationSource elevationSource = const SyntheticElevation();
 
+  /// Freie A/B-Punkte für die LOS-Karte (lat/lon, ohne GPS-Advert).
+  GeoPoint? mapPointA;
+  GeoPoint? mapPointB;
+
+  /// 0 = A wird gesetzt, 1 = B (Tap-Ziel auf der Karte).
+  int mapTapTarget = 0;
+
+  /// Kartenfokus: 'mesh' zeigt bekannte Nodes, 'los' zeigt die A/B-Route.
+  String mapMode = 'mesh';
+
   CompanionClient? _bleClient;
   BleTransport? _bleTransport;
   BleScanner? _scanner;
@@ -910,6 +920,97 @@ class AppController extends ChangeNotifier {
     losBusy = false;
     notifyListeners();
     return lastLos!;
+  }
+
+  // ---- LOS-Karte: freie A/B-Punkte -------------------------------
+
+  LosResult? lastLosMap;
+  bool losMapBusy = false;
+
+  void setMapTapTarget(int t) {
+    mapTapTarget = t.clamp(0, 1);
+    notifyListeners();
+  }
+
+  /// Karten-Tap: setzt A oder B je nach [mapTapTarget], rückt automatisch
+  /// weiter und rechnet die Sichtlinie, sobald beide Enden stehen.
+  void placeTapped(GeoPoint p) {
+    if (!p.isValid) return;
+    if (mapTapTarget == 0) {
+      mapPointA = p;
+      mapTapTarget = 1;
+    } else {
+      mapPointB = p;
+    }
+    notifyListeners();
+    unawaited(computeLosMap());
+  }
+
+  void setMapPointA(GeoPoint? p) {
+    mapPointA = p;
+    if (p == null) mapTapTarget = 0;
+    notifyListeners();
+    unawaited(computeLosMap());
+  }
+
+  void setMapPointB(GeoPoint? p) {
+    mapPointB = p;
+    if (p == null) mapTapTarget = 1;
+    notifyListeners();
+    unawaited(computeLosMap());
+  }
+
+  void clearMapPoints() {
+    mapPointA = null;
+    mapPointB = null;
+    mapTapTarget = 0;
+    lastLosMap = null;
+    losMapBusy = false;
+    notifyListeners();
+  }
+
+  String _mapPointName(GeoPoint p) {
+    final selfPt = selfPoint();
+    final selfName = self?.name ?? 'Ich';
+    if (selfPt != null && _isSameGeo(selfPt, p)) return selfName;
+    for (final c in contacts) {
+      final cp = pointFor(c);
+      if (cp != null && _isSameGeo(cp, p)) return c.name;
+    }
+    return p == mapPointA ? 'Punkt A' : 'Punkt B';
+  }
+
+  bool _isSameGeo(GeoPoint a, GeoPoint b) {
+    return (a.lat - b.lat).abs() < 1e-5 && (a.lon - b.lon).abs() < 1e-5;
+  }
+
+  Future<void> computeLosMap() async {
+    final a = mapPointA;
+    final b = mapPointB;
+    if (a == null || b == null) {
+      lastLosMap = null;
+      losMapBusy = false;
+      notifyListeners();
+      return;
+    }
+    losMapBusy = true;
+    notifyListeners();
+    List<double> terrain;
+    try {
+      terrain = await elevationSource.along(a, b);
+    } catch (_) {
+      terrain = syntheticTerrain(a, b);
+    }
+    lastLosMap = analyzeLos(
+      from: a,
+      to: b,
+      fromName: _mapPointName(a),
+      toName: _mapPointName(b),
+      freqMhz: radioSettings?.freqMhz ?? 869.525,
+      terrainM: terrain,
+    );
+    losMapBusy = false;
+    notifyListeners();
   }
 
   NoiseSample? get lastNoise => noiseSamples.isEmpty ? null : noiseSamples.last;
