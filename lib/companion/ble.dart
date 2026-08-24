@@ -98,8 +98,15 @@ class BleTransport implements CompanionTransport {
 
   BluetoothDevice get device => _device;
 
+  /// flutter_blue_plus 2.x: Lizenz-Parameter ist nun erforderlich.
+  /// Persönliches Projekt → nonprofit. Für kommerzielle Nutzung
+  /// muss auf License.commercial + gekaufter Commercial-Lizenz gewechselt werden.
+  /// https://jamcorder.myshopify.com/products/flutterblueplus-commercial-license
   Future<void> connect() async {
-    await _device.connect(timeout: const Duration(seconds: opTimeoutSec));
+    await _device.connect(
+      timeout: const Duration(seconds: opTimeoutSec),
+      license: License.nonprofit,
+    );
     try {
       await _device.requestMtu(185);
     } catch (_) {}

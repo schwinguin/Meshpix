@@ -8,7 +8,8 @@ android {
     namespace = "cloud.nothof.meshpix"
     // Explizit gepinnt (entspricht Flutter-Defaults 3.47.1). Ein Flutter-
     // Default-Bump darf den Build hier nicht still ändern.
-    compileSdk = 36
+    // compileSdk 37: Pflicht seit permission_handler 13 (Android-17-Support).
+    compileSdk = 37
     ndkVersion = "28.2.13676358"
 
     compileOptions {
