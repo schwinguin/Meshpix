@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show HttpClient, HttpOverrides, SecurityContext;
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,11 @@ import 'ui/theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // OSM-Kachel-Policy: tile.openstreetmap.org blockt Requests ohne
+  // beschreibenden User-Agent („tile usage policy", osm.wiki/blocked).
+  // App-weit setzen: gilt für Kartenkacheln UND Open-Meteo-Elevation.
+  HttpOverrides.global = _MeshPixHttpOverrides();
 
   // Globale Fehlerfänger: ungewollte Exceptions (z. B. aus
   // Fire-and-forget-Timern im Reconnect-Pfad) dürfen die App nicht
@@ -91,5 +97,14 @@ class _MeshPixAppState extends State<MeshPixApp> with WidgetsBindingObserver {
   Future<void> _handleContactLink(AppController controller, Uri? uri) async {
     if (uri?.scheme != 'meshcore') return;
     await controller.handleContactUri(uri.toString());
+  }
+}
+
+class _MeshPixHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    client.userAgent = 'MeshPix/1.0 (https://github.com/schwinguin/Meshpix)';
+    return client;
   }
 }

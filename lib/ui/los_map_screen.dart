@@ -171,6 +171,14 @@ class _LosMapPaneState extends State<LosMapPane> {
                           urlTemplate:
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                           maxZoom: 19,
+                          // OSM blockt generische Clients („tile usage policy",
+                          // osm.wiki/blocked): User-Agent mit App + Version +
+                          // Kontakt-URL.
+                          tileProvider: NetworkTileProvider(
+                            headers: {
+                              'User-Agent': 'MeshPix/1.0 (https://github.com/schwinguin/Meshpix)',
+                            },
+                          ),
                         ),
                         const SimpleAttributionWidget(
                           source: Text('© OpenStreetMap-Mitwirkende'),
